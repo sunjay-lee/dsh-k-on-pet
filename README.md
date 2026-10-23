@@ -225,7 +225,7 @@ CHROME_BIN=/usr/bin/chromium node scripts/smoke.mjs
 python3 scripts/build-meta.py
 ```
 
-`npm test` 会构建、检查、跑 `test/core.test.mjs` 的 16 项纯逻辑测试，再用 `smoke.mjs` 起本地静态服务器加载 `test/harness.html`，通过 CDP 检查：overlay + settings 两个 slot 的注册、桌子绘制与开关、拖到座位/拖出离座、canvas 有像素、点击/双击气泡、拖动与位置持久化、右键隐藏、重置位置、多角色同时渲染、大小设置、全部隐藏、设置页计数，并生成 `docs/preview.png` 与 `docs/settings.png`。`docs/table.png` 是手动截取的五人同桌示意图。harness 使用 `test/vendor/` 里内置的 React 18 UMD，不需要 `npm install`，也不访问网络。
+`npm test` 会构建、检查、跑 `test/core.test.mjs` 的 16 项纯逻辑测试，再用 `smoke.mjs` 起本地静态服务器加载 `test/harness.html`，通过 CDP 检查：overlay + settings 两个 slot 的注册、桌子绘制与开关、拖到座位/拖出离座、canvas 有像素、点击/双击气泡、拖动与位置持久化、右键隐藏、重置位置、多角色同时渲染、大小设置、全部隐藏、设置页计数，并生成 `docs/preview.png` 与 `docs/settings.png`。`docs/table.png` 是五人同桌示意图。harness 使用 `test/vendor/` 里内置的 React 18 UMD，不需要 `npm install`，也不访问网络。
 
 CI 在 `.github/workflows/ci.yml`：Node 22 + Chrome for Testing，执行 `npm test`。
 

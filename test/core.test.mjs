@@ -77,7 +77,10 @@ test("table helpers place and hit the five fixed seats", () => {
 	const yui = Core.TABLE.seats.find((seat) => seat.id === "yui");
 	const rect = Core.tableSeatRect(yui, pos.x, pos.y, 1);
 	assert.equal(Core.tableSeatAt(rect.x + rect.w / 2, rect.y + rect.h / 2, pos.x, pos.y, 1).id, "yui");
-	assert.equal(Core.tableSeatAt(10, 10, pos.x, pos.y, 1), null);
+	assert.notEqual(Core.tableSeatAt(pos.x + 1, pos.y + 1, pos.x, pos.y, 1), null);
+	assert.notEqual(Core.tableSeatAt(pos.x + Core.TABLE.width - 2, pos.y + Core.TABLE.height - 2, pos.x, pos.y, 1), null);
+	assert.equal(Core.tableSeatAt(pos.x - 1, pos.y + 1, pos.x, pos.y, 1), null);
+	assert.equal(Core.tableSeatAt(pos.x + 1, pos.y + Core.TABLE.height + 1, pos.x, pos.y, 1), null);
 	assert.deepEqual(Core.TABLE.seats.map((seat) => seat.id), ["mio", "ritsu", "yui", "tsumugi", "azusa"]);
 });
 

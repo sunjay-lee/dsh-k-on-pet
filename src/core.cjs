@@ -27,7 +27,7 @@
 		height: 160,
 		charWidth: 64,
 		charHeight: 128,
-		charTop: 32,
+		charTop: 20,
 		frames: 4,
 		fps: 4,
 		seats: [
@@ -215,15 +215,17 @@
 		};
 	}
 
+	// 整张茶桌都是投喂区：落点只要在桌子里，就交给离落点最近的空位。
 	function tableSeatAt(x, y, tableX, tableY, scale) {
+		const width = TABLE.width * scale;
+		const height = TABLE.height * scale;
+		if (x < tableX || x > tableX + width || y < tableY || y > tableY + height) return null;
 		let best = null;
 		let bestDistance = Infinity;
 		for (const seat of TABLE.seats) {
 			const rect = tableSeatRect(seat, tableX, tableY, scale);
-			const cx = rect.x + rect.w / 2;
-			const cy = rect.y + rect.h / 2;
-			const distance = Math.hypot(x - cx, y - cy);
-			if (distance <= 74 * scale && distance < bestDistance) {
+			const distance = Math.hypot(x - (rect.x + rect.w / 2), y - (rect.y + rect.h / 2));
+			if (distance < bestDistance) {
 				best = seat;
 				bestDistance = distance;
 			}

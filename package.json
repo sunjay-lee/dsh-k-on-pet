@@ -1,6 +1,6 @@
 {
 	"name": "dsh-k-on-pet",
-	"version": "0.5.0",
+	"version": "0.5.1",
 	"description": "K-ON! 轻音少女桌面宠物：把平泽唯、秋山澪、田井中律、琴吹䌷、中野梓挂进 DeepSeek Harness 的 Web 界面。",
 	"type": "module",
 	"main": "lib/index.js",

@@ -272,7 +272,9 @@ try {
 	await mouse("mousePressed", seatedBox.x + seatedBox.width / 2, seatedBox.y + seatedBox.height / 2);
 	await sleep(120);
 	await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: seatedBox.x - 180, y: seatedBox.y - 140, button: "left", buttons: 1, clickCount: 1 });
-	await sleep(120);
+	await sleep(160);
+	await waitUntil("!!document.querySelector('.konp-table-ghost')", 1000, "座位拖出时显示抓取动画");
+	check(true, "从座位拖出时切换为抓取动画");
 	await mouse("mouseReleased", seatedBox.x - 180, seatedBox.y - 140);
 	await waitUntil("!document.querySelector('.konp-table-seat') && !!document.querySelector('.konp-canvas')", 3000, "离座");
 	check(true, "从座位拖出后恢复站立");

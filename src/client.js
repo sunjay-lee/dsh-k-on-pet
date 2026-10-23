@@ -207,6 +207,85 @@
 				};
 			}
 
+			const seatGhostCache = new Map();
+			function loadSeatGhost(id) {
+				if (seatGhostCache.has(id)) return seatGhostCache.get(id);
+				const promise = (async () => {
+					const base = `${ASSET_BASE}/characters/${id}`;
+					const metaResponse = await fetch(`${base}/meta.json?v=${ASSET_REV}`, { cache: "no-cache" });
+					if (!metaResponse.ok) throw new Error(`meta ${metaResponse.status}`);
+					const meta = await metaResponse.json();
+					const image = new Image();
+					image.src = `${base}/sheet.png?v=${ASSET_REV}`;
+					await image.decode();
+					return { meta, image };
+				})().catch((error) => {
+					seatGhostCache.delete(id);
+					throw error;
+				});
+				seatGhostCache.set(id, promise);
+				return promise;
+			}
+
+			function SeatGhost({ id, x, y, width, height }) {
+				const canvasRef = useRef(null);
+				const [asset, setAsset] = useState(null);
+				useEffect(() => {
+					let active = true;
+					loadSeatGhost(id).then((value) => { if (active) setAsset(value); }).catch(() => {});
+					return () => { active = false; };
+				}, [id]);
+				useEffect(() => {
+					const canvas = canvasRef.current;
+					if (!canvas || !asset) return undefined;
+					const ctx = canvas.getContext("2d");
+					const frames = asset.meta.clips.held && asset.meta.clips.held.length ? asset.meta.clips.held : asset.meta.clips.idle;
+					let frame = 0;
+					let acc = 0;
+					const draw = () => {
+						const rect = Core.frameRect(frames[frame % frames.length], asset.meta.sheet.columns);
+						ctx.clearRect(0, 0, CELL, CELL);
+						ctx.drawImage(asset.image, rect.sx, rect.sy, rect.size, rect.size, 0, 0, CELL, CELL);
+					};
+					draw();
+					const stop = addTicker((dt) => {
+						acc += dt;
+						const interval = 1 / Math.max(1, CLIP_FPS.held || 8);
+						if (acc < interval) return;
+						acc = 0;
+						frame += 1;
+						draw();
+					});
+					return stop;
+				}, [asset]);
+				if (!asset) {
+					return h("img", {
+						className: "konp-table-ghost",
+						src: `${ASSET_BASE}/table/${id}.png?v=${ASSET_REV}`,
+						alt: "",
+						draggable: false,
+						style: { left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${height}px` },
+					});
+				}
+				return h("canvas", {
+					ref: canvasRef,
+					width: CELL,
+					height: CELL,
+					className: "konp-table-ghost",
+					style: {
+						position: "fixed",
+						left: `${x}px`,
+						top: `${y}px`,
+						width: `${width}px`,
+						height: `${height}px`,
+						zIndex: 2147482600,
+						pointerEvents: "none",
+						imageRendering: "pixelated",
+						filter: "drop-shadow(0 8px 12px rgba(0,0,0,.18))",
+					},
+				});
+			}
+
 			function Switch({ checked, onChange, label }) {
 				return h("button", {
 					type: "button",
@@ -223,6 +302,14 @@
 				const count = ROSTER.filter((member) => settings.visible[member.id]).length;
 				const fileRef = useRef(null);
 				const [notice, setNotice] = useState("");
+				const [, setPaint] = useState(0);
+
+				// DSH 首次挂载设置分区时，槽位容器尺寸/主题变量可能还没稳定；
+				// 等一帧再画一次，避免第一次进入时开关或行高看起来错位。
+				useEffect(() => {
+					const raf = requestAnimationFrame(() => setPaint((value) => value + 1));
+					return () => cancelAnimationFrame(raf);
+				}, []);
 
 				const doExport = () => {
 					const blob = new Blob([Core.exportSettings(settings)], { type: "application/json" });
@@ -1023,7 +1110,7 @@
 				);
 			}
 
-			function TableScene({ settings, tablePos, onTableMove, onTableCommit, onUnseat, onSeatDrop, updateSettings }) {
+			function TableScene({ settings, tablePos, onTableMove, onTableCommit, onSeatDrop, updateSettings }) {
 				const scale = settings.scale;
 				const width = TABLE.width * scale;
 				const height = TABLE.height * scale;
@@ -1035,6 +1122,7 @@
 				const cleanupRef = useRef(() => {});
 				const menuRef = useRef(null);
 				const [dragging, setDragging] = useState(false);
+				const [draggingSeat, setDraggingSeat] = useState(null);
 				const [ghost, setGhost] = useState(null);
 				const [menu, setMenu] = useState(null);
 				const [failed, setFailed] = useState(false);
@@ -1164,11 +1252,14 @@
 					event.preventDefault();
 					event.stopPropagation();
 					if (seatDrag.current) return;
+					const box = event.currentTarget.getBoundingClientRect();
 					const drag = {
 						id: seat.id,
 						pointerId: event.pointerId,
 						startX: event.clientX,
 						startY: event.clientY,
+						offsetX: event.clientX - box.left,
+						offsetY: event.clientY - box.top,
 						moved: false,
 						width: TABLE.charWidth * scale,
 						height: TABLE.charHeight * scale,
@@ -1179,24 +1270,29 @@
 						const distance = Math.hypot(moveEvent.clientX - drag.startX, moveEvent.clientY - drag.startY);
 						if (!drag.moved && distance > 4) {
 							drag.moved = true;
-							onUnseat(drag.id);
+							setDraggingSeat(drag.id);
 						}
 						if (!drag.moved) return;
-						setGhost({ id: drag.id, x: moveEvent.clientX - drag.width / 2, y: moveEvent.clientY - drag.height / 2 });
+						setGhost({
+							id: drag.id,
+							x: moveEvent.clientX - drag.offsetX,
+							y: moveEvent.clientY - drag.offsetY,
+						});
 					};
 					const cleanup = () => {
 						window.removeEventListener("pointermove", move);
 						window.removeEventListener("pointerup", up);
 						window.removeEventListener("pointercancel", up);
 						seatDrag.current = null;
+						setDraggingSeat(null);
 						setGhost(null);
 						cleanupRef.current = () => {};
 					};
 					const up = (upEvent) => {
 						if (upEvent.pointerId !== drag.pointerId) return;
 						const moved = drag.moved;
-						const x = upEvent.clientX - drag.width / 2;
-						const y = upEvent.clientY - drag.height / 2;
+						const x = upEvent.clientX - drag.offsetX;
+						const y = upEvent.clientY - drag.offsetY;
 						cleanup();
 						if (moved) onSeatDrop(drag.id, x, y);
 					};
@@ -1241,7 +1337,7 @@
 						role: "presentation",
 					}),
 					TABLE.seats.map((seat) => {
-						if (!settings.visible[seat.id] || !settings.seats[seat.id]) return null;
+						if (!settings.visible[seat.id] || !settings.seats[seat.id] || draggingSeat === seat.id) return null;
 						return h("img", {
 							key: seat.id,
 							className: "konp-table-seat",
@@ -1262,20 +1358,15 @@
 						});
 					}),
 					h("canvas", { ref: frontRef, width: TABLE.width, height: TABLE.height, className: "konp-table-canvas konp-table-front", style: { position: "absolute", inset: 0, width: "100%", height: "100%", zIndex: 3, pointerEvents: "none" } }),
-					ghost ? h("img", {
-						className: "konp-table-ghost",
-						src: `${ASSET_BASE}/table/${ghost.id}.png?v=${ASSET_REV}`,
-						alt: "",
-						draggable: false,
-						style: {
-							left: `${ghost.x}px`,
-							top: `${ghost.y}px`,
-							width: `${TABLE.charWidth * scale}px`,
-							height: `${TABLE.charHeight * scale}px`,
-						},
-					}) : null,
 					failed ? h("div", { className: "konp-fallback" }, "桌子素材加载失败") : null,
 				),
+				ghost ? h(SeatGhost, {
+					id: ghost.id,
+					x: ghost.x,
+					y: ghost.y,
+					width: TABLE.charWidth * scale,
+					height: TABLE.charHeight * scale,
+				}) : null,
 				menu ? h("div", {
 					ref: menuRef,
 					className: "konp-menu konp-table-menu",
@@ -1349,22 +1440,6 @@
 					return true;
 				};
 
-				const onUnseat = (id) => {
-					const seat = TABLE.seats.find((item) => item.id === id);
-					if (!seat) return;
-					const scale = settings.scale;
-					const x = tableRef.current.x + (seat.x + TABLE.charWidth / 2) * scale - (CELL * scale) / 2;
-					const y = tableRef.current.y + (TABLE.height - CELL) * scale;
-					updateSettings((current) => ({
-						...current,
-						seats: { ...current.seats, [id]: false },
-						positions: {
-							...current.positions,
-							[id]: { x: Math.round(x), y: Math.round(y) },
-						},
-					}));
-				};
-
 				const onSeatDrop = (id, x, y) => {
 					const size = CELL * settings.scale;
 					const seat = Core.tableSeatAt(
@@ -1383,6 +1458,7 @@
 					}
 					updateSettings((current) => ({
 						...current,
+						seats: { ...current.seats, [id]: false },
 						positions: { ...current.positions, [id]: { x: Math.round(x), y: Math.round(y) } },
 					}));
 				};
@@ -1396,7 +1472,6 @@
 							...current,
 							tablePos: { x: tableRef.current.x, y: tableRef.current.y },
 						})),
-						onUnseat,
 						onSeatDrop,
 						updateSettings,
 					}) : null,
