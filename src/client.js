@@ -1422,16 +1422,13 @@
 				const onDropSeat = (id, position) => {
 					if (!settings.table) return false;
 					const size = CELL * settings.scale;
-					// Dropping anywhere on the table seats the actor in its own fixed
-					// chair; a small margin makes the visible tabletop/legs forgiving.
-					const onTable = tableContainsPoint(
-						position.x + size / 2,
-						position.y + size / 2,
-						tableRef.current.x,
-						tableRef.current.y,
-						settings.scale,
-						24 * settings.scale,
-					);
+					const tx = tableRef.current.x;
+					const ty = tableRef.current.y;
+					const tw = TABLE.width * settings.scale;
+					const th = TABLE.height * settings.scale;
+					// 角色和茶桌有任意重叠就入座，不再要求精确落到某把椅子上。
+					const onTable = position.x < tx + tw && position.x + size > tx &&
+						position.y < ty + th && position.y + size > ty;
 					if (!onTable) return false;
 					updateSettings((current) => ({
 						...current,
