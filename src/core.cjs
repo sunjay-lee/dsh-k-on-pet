@@ -24,8 +24,8 @@
 		{ id: "yui", name: "平泽唯", accent: "#f39ab0", columns: 6, rows: 7, voices: 28 },
 		{ id: "mio", name: "秋山澪", accent: "#6d8fb5", columns: 6, rows: 6, voices: 27 },
 		{ id: "ritsu", name: "田井中律", accent: "#e0a63f", columns: 6, rows: 6, voices: 30 },
-		{ id: "tsumugi", name: "琴吹䌷", accent: "#b58ccb", columns: 7, rows: 6, voices: 27 },
-		{ id: "azusa", name: "中野梓", accent: "#dd7b5d", columns: 7, rows: 6, voices: 25 },
+		{ id: "tsumugi", name: "琴吹䌷", accent: "#b58ccb", columns: 6, rows: 6, voices: 27 },
+		{ id: "azusa", name: "中野梓", accent: "#dd7b5d", columns: 6, rows: 6, voices: 25 },
 	];
 
 	const LINES = {
