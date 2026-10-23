@@ -20,6 +20,25 @@
 	const TALK_EVERY = [2.5 * 60 * 1000, 5 * 60 * 1000];
 	const GRAVITY = 1900;
 
+	// 桌面摆件：desk00(中间三把椅子) + desk01(两侧椅子) 叠成五个固定座位。
+	// 坐标来自 MascotTable_d/main.sd 的对象表（x 为 288×160 场景内的左坐标）。
+	const TABLE = {
+		width: 288,
+		height: 160,
+		charWidth: 64,
+		charHeight: 128,
+		charTop: 32,
+		frames: 4,
+		fps: 4,
+		seats: [
+			{ id: "mio", x: 0, mirror: false },
+			{ id: "ritsu", x: 64, mirror: false },
+			{ id: "yui", x: 112, mirror: false },
+			{ id: "tsumugi", x: 176, mirror: false },
+			{ id: "azusa", x: 224, mirror: false },
+		],
+	};
+
 	const ROSTER = [
 		{ id: "yui", name: "平泽唯", accent: "#f39ab0", columns: 6, rows: 7, voices: 28 },
 		{ id: "mio", name: "秋山澪", accent: "#6d8fb5", columns: 6, rows: 6, voices: 27 },
@@ -105,6 +124,9 @@
 			chatter: true,
 			care: true,
 			positions: {},
+			table: true,
+			tablePos: null,
+			seats: {},
 		};
 	}
 
@@ -131,6 +153,17 @@
 			positions[id] = { x: Number(source.x), y: Number(source.y) };
 		}
 
+		const table = source.table !== false;
+		const tablePos = source.tablePos && Number.isFinite(source.tablePos.x) && Number.isFinite(source.tablePos.y)
+			? { x: Number(source.tablePos.x), y: Number(source.tablePos.y) }
+			: null;
+		const seats = {};
+		if (source.seats && typeof source.seats === "object" && !Array.isArray(source.seats)) {
+			for (const member of ROSTER) {
+				if (source.seats[member.id] === true) seats[member.id] = true;
+			}
+		}
+
 		return {
 			version: SETTINGS_VERSION,
 			visible,
@@ -139,7 +172,54 @@
 			chatter: source.chatter !== false,
 			care: source.care !== false,
 			positions,
+			table,
+			tablePos,
+			seats,
 		};
+	}
+
+	function tableDefaultPosition(scale, viewportWidth, viewportHeight) {
+		const width = TABLE.width * scale;
+		const height = TABLE.height * scale;
+		return {
+			x: Math.max(0, Math.round((viewportWidth - width) / 2)),
+			// Keep the table clear of the chat composer at the bottom of the DSH shell.
+			y: Math.max(0, Math.round(viewportHeight - height - 96)),
+		};
+	}
+
+	function clampTablePosition(x, y, scale, viewportWidth, viewportHeight) {
+		const width = TABLE.width * scale;
+		const height = TABLE.height * scale;
+		return {
+			x: Math.round(clamp(Number(x) || 0, 0, Math.max(0, viewportWidth - width))),
+			y: Math.round(clamp(Number(y) || 0, 0, Math.max(0, viewportHeight - height))),
+		};
+	}
+
+	function tableSeatRect(seat, tableX, tableY, scale) {
+		return {
+			x: tableX + seat.x * scale,
+			y: tableY + TABLE.charTop * scale,
+			w: TABLE.charWidth * scale,
+			h: TABLE.charHeight * scale,
+		};
+	}
+
+	function tableSeatAt(x, y, tableX, tableY, scale) {
+		let best = null;
+		let bestDistance = Infinity;
+		for (const seat of TABLE.seats) {
+			const rect = tableSeatRect(seat, tableX, tableY, scale);
+			const cx = rect.x + rect.w / 2;
+			const cy = rect.y + rect.h / 2;
+			const distance = Math.hypot(x - cx, y - cy);
+			if (distance <= 74 * scale && distance < bestDistance) {
+				best = seat;
+				bestDistance = distance;
+			}
+		}
+		return best;
 	}
 
 	function boundsFor(viewportWidth, viewportHeight, size) {
@@ -252,6 +332,7 @@
 		CARE_EVERY,
 		TALK_EVERY,
 		GRAVITY,
+		TABLE,
 		ROSTER,
 		LINES,
 		CARE_LINES,
@@ -261,6 +342,10 @@
 		clamp,
 		createDefaultSettings,
 		normalizeSettings,
+		tableDefaultPosition,
+		clampTablePosition,
+		tableSeatRect,
+		tableSeatAt,
 		boundsFor,
 		defaultPosition,
 		stepThrow,

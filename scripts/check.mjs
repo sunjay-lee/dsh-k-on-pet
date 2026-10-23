@@ -43,6 +43,13 @@ if (client !== expectedClient) problems.push("lib/client.js 与 src/ 不同步�
 
 for (const rel of [
 	"assets/icon.png",
+	"assets/table/desk00.png",
+	"assets/table/desk01.png",
+	"assets/table/mio.png",
+	"assets/table/ritsu.png",
+	"assets/table/yui.png",
+	"assets/table/tsumugi.png",
+	"assets/table/azusa.png",
 	"src/core.cjs",
 	"src/client.js",
 	"test/core.test.mjs",

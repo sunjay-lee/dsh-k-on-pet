@@ -11,6 +11,9 @@ test("defaults show only Yui and use v2", () => {
 	assert.equal(settings.scale, 1.5);
 	assert.deepEqual(settings.visible, { yui: true, mio: false, ritsu: false, tsumugi: false, azusa: false });
 	assert.deepEqual(settings.positions, {});
+	assert.equal(settings.table, true);
+	assert.equal(settings.tablePos, null);
+	assert.deepEqual(settings.seats, {});
 });
 
 test("migrates v1 character + x/y to v2 visible and positions", () => {
@@ -52,6 +55,30 @@ test("keeps behavior switches and their defaults", () => {
 	assert.equal(defaults.chatter, true);
 	assert.equal(defaults.care, true);
 	assert.equal(defaults.muted, false);
+});
+
+test("keeps table position and seats, dropping malformed values", () => {
+	const settings = Core.normalizeSettings({
+		table: false,
+		tablePos: { x: 12, y: 34 },
+		seats: { ritsu: true, yui: "yes" },
+	});
+	assert.equal(settings.table, false);
+	assert.deepEqual(settings.tablePos, { x: 12, y: 34 });
+	assert.equal(settings.seats.ritsu, true);
+	assert.equal(settings.seats.yui, undefined);
+	assert.deepEqual(Core.normalizeSettings({ tablePos: { x: "1", y: 2 } }).tablePos, null);
+});
+
+test("table helpers place and hit the five fixed seats", () => {
+	const pos = Core.tableDefaultPosition(1, 1000, 800);
+	assert.deepEqual(pos, { x: 356, y: 544 });
+	assert.deepEqual(Core.clampTablePosition(-5, 9999, 1, 1000, 800), { x: 0, y: 640 });
+	const yui = Core.TABLE.seats.find((seat) => seat.id === "yui");
+	const rect = Core.tableSeatRect(yui, pos.x, pos.y, 1);
+	assert.equal(Core.tableSeatAt(rect.x + rect.w / 2, rect.y + rect.h / 2, pos.x, pos.y, 1).id, "yui");
+	assert.equal(Core.tableSeatAt(10, 10, pos.x, pos.y, 1), null);
+	assert.deepEqual(Core.TABLE.seats.map((seat) => seat.id), ["mio", "ritsu", "yui", "tsumugi", "azusa"]);
 });
 
 test("export/import round-trips normalized settings", () => {

@@ -248,6 +248,39 @@ try {
 	check(await evaluate("window.__settings.options.name === 'settings.section' && typeof window.__settings.options.label === 'function'"), "注册到 settings.section 且带导航 label");
 	check(await evaluate("window.__settings.options.label() === 'K-ON! 桌宠'"), "设置分区名称为 K-ON! 桌宠");
 	check(await evaluate("!document.querySelector('.konp-fallback')"), "素材加载成功（无 fallback）");
+	check(await evaluate("!!document.querySelector('.konp-table')"), "桌子默认显示");
+	const tablePainted = await evaluate(`(() => {
+		const canvas = document.querySelector('.konp-table-back');
+		const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+		let opaque = 0;
+		for (let i = 3; i < data.length; i += 4) if (data[i] > 16) opaque += 1;
+		return opaque;
+	})()`);
+	check(tablePainted > 1000, `桌子已绘制（不透明像素 ${tablePainted}）`);
+
+	// ---- 拖到桌子座位 / 拖出离座 ----
+	const seatPoint = await evaluate(`(() => { const t = document.querySelector('.konp-table').getBoundingClientRect(); return { x: t.x + (112 + 32) * 1.5, y: t.y + (32 + 64) * 1.5 }; })()`);
+	const seatActorBox = await actorBox(0);
+	await mouse("mousePressed", seatActorBox.x + seatActorBox.width / 2, seatActorBox.y + seatActorBox.height / 2);
+	await sleep(120);
+	await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: seatPoint.x, y: seatPoint.y, button: "left", buttons: 1, clickCount: 1 });
+	await sleep(120);
+	await mouse("mouseReleased", seatPoint.x, seatPoint.y);
+	await waitUntil("!!document.querySelector('.konp-table-seat') && document.querySelectorAll('.konp-canvas').length === 0", 3000, "入座");
+	check(await evaluate("document.querySelector('.konp-table-seat').getAttribute('src').includes('/yui.png')"), "平泽唯拖到座位后切换为坐姿");
+	const seatedBox = await evaluate("(() => { const r = document.querySelector('.konp-table-seat').getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:r.height }; })()");
+	await mouse("mousePressed", seatedBox.x + seatedBox.width / 2, seatedBox.y + seatedBox.height / 2);
+	await sleep(120);
+	await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: seatedBox.x - 180, y: seatedBox.y - 140, button: "left", buttons: 1, clickCount: 1 });
+	await sleep(120);
+	await mouse("mouseReleased", seatedBox.x - 180, seatedBox.y - 140);
+	await waitUntil("!document.querySelector('.konp-table-seat') && !!document.querySelector('.konp-canvas')", 3000, "离座");
+	check(true, "从座位拖出后恢复站立");
+
+	await setSwitch("显示桌子", false);
+	await waitUntil("!document.querySelector('.konp-table')", 2000, "关闭桌子");
+	await setSwitch("显示桌子", true);
+	await waitUntil("!!document.querySelector('.konp-table')", 2000, "重新打开桌子");
 
 	const painted = await evaluate(`(() => {
 		const canvas = document.querySelector('.konp-canvas');
@@ -262,7 +295,7 @@ try {
 	check(sheetUrls.length > 0 && sheetUrls.every((url) => /[?&]v=[a-f0-9]{12}(?:&|$)/.test(url)), `图集请求带资源版本号（${sheetUrls.join(', ')}）`);
 
 	// ---- 设置页基础 ----
-	const charSwitches = await evaluate(`[...document.querySelectorAll('.konp-settings [role="switch"]')].filter((el) => (el.getAttribute('aria-label') || '').startsWith('显示')).length`);
+	const charSwitches = await evaluate(`[...document.querySelectorAll('.konp-settings [role="switch"]')].filter((el) => (el.getAttribute('aria-label') || '').startsWith('显示') && el.getAttribute('aria-label') !== '显示桌子').length`);
 	check(charSwitches === 5, `设置页列出 5 个角色开关（实际 ${charSwitches}）`);
 	check(await evaluate("document.querySelectorAll('.konp-settings .konp-set-row').length >= 8"), "设置页包含角色、大小、语音、闲聊、关怀等条目");
 	check(await evaluate("document.querySelector('.konp-settings .konp-set-thumb') && getComputedStyle(document.querySelector('.konp-settings .konp-set-thumb')).backgroundImage.includes('sheet.png')"), "设置页角色缩略图使用原版 sheet");
@@ -383,7 +416,7 @@ try {
 	// ---- 全部隐藏 / 全部显示 ----
 	await clickButton("全部隐藏");
 	await waitUntil("document.querySelectorAll('.konp-canvas').length === 0", 3000, "全部隐藏");
-	check(await evaluate("document.querySelectorAll('.konp-settings [aria-label^=\"显示\"][aria-checked=\"true\"]').length === 0"), "全部隐藏后所有角色开关关闭");
+	check(await evaluate("document.querySelectorAll('.konp-settings [aria-label^=\"显示\"][aria-checked=\"true\"]').length === 1 && document.querySelector('.konp-settings [aria-label=\"显示桌子\"]').getAttribute('aria-checked') === 'true'"), "全部隐藏后角色开关关闭、桌子开关保持");
 	await setSwitch("显示平泽唯", true);
 	await waitUntil("document.querySelectorAll('.konp-canvas').length === 1", 3000, "只显示平泽唯");
 	check(await evaluate("document.querySelector('.konp-settings .konp-set-head span').textContent.trim() === '1 / 5'"), "设置页计数正确（1 / 5）");
@@ -408,7 +441,9 @@ try {
 	await writeFile(join(root, "docs/preview.png"), Buffer.from(shot.data, "base64"));
 	console.log("  ✓ 已生成 docs/preview.png");
 
-	// 设置页截图（不做任何交互，保持当前 1/5 状态）。
+	// 设置页截图（不做任何交互，保持当前 1/5 状态）。截图时临时隐藏悬浮层，
+	// 避免桌子和角色挡住设置内容；截完立即恢复。
+	await evaluate(`(() => { const root = document.querySelector('.konp-root'); if (root) root.style.visibility = 'hidden'; })()`);
 	const panel = await evaluate(`(() => { const el = document.getElementById('settings-root'); const r = el.getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:Math.min(560, r.height) }; })()`);
 	const panelShot = await cdp.send("Page.captureScreenshot", {
 		format: "png",
@@ -416,6 +451,7 @@ try {
 		clip: { x: panel.x, y: panel.y, width: panel.width, height: panel.height, scale: 1 },
 	});
 	await writeFile(join(root, "docs/settings.png"), Buffer.from(panelShot.data, "base64"));
+	await evaluate(`(() => { const root = document.querySelector('.konp-root'); if (root) root.style.visibility = ''; })()`);
 	console.log("  ✓ 已生成 docs/settings.png");
 
 } catch (error) {
