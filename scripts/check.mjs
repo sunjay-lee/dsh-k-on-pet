@@ -92,8 +92,11 @@ for (const id of roster) {
 	for (const required of ["idle", "react", "sleep", "held"]) {
 		if (!meta.clips?.[required]?.length) problems.push(`${id}: 缺少 clip ${required}`);
 	}
-	if (id === "ritsu" && meta.clips.held.join(",") !== meta.clips.react.join(",")) {
-		problems.push(`${id}: 抓取动作应复用 row0 的慌张动画`);
+	const expectedHeldRow = id === "yui" ? 2 : 1;
+	const expectedSleepRow = id === "yui" ? 1 : 2;
+	for (const [clip, row] of [["held", expectedHeldRow], ["sleep", expectedSleepRow]]) {
+		const rows = new Set((meta.clips[clip] ?? []).map((frame) => Math.floor(frame / columns)));
+		if (rows.size !== 1 || !rows.has(row)) problems.push(`${id}: ${clip} 应位于 row${row}`);
 	}
 	if (!Array.isArray(meta.voices) || meta.voices.length === 0) problems.push(`${id}: voices 为空`);
 	for (const voice of meta.voices ?? []) {

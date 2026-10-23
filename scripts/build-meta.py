@@ -54,8 +54,15 @@ def build(char_id: str) -> None:
     cols = meta["sheet"]["columns"]
     frames = {cell["index"]: cell for cell in meta["cells"]}
 
+    # 抓取行按角色不同：唯是 row2，其余四人是 row1；
+    # 对应的睡眠行则相反（唯 row1，其余 row2）。
+    sleep_row = 1 if char_id == "yui" else 2
+    held_row = 2 if char_id == "yui" else 1
+    row_for = {"sleep": sleep_row, "held": held_row}
+
     clips = {}
     for clip, row in CLIP_ROWS.items():
+        row = row_for.get(clip, row)
         picked = [
             index
             for index, cell in sorted(frames.items())
@@ -64,10 +71,6 @@ def build(char_id: str) -> None:
         clips[clip] = picked
     if not clips["idle"]:
         clips["idle"] = clips["idleAlt"] or clips["react"] or [0]
-    # 律的 row2 是“双手交握站着”的动作，不像被抓起；row0 的慌张举手
-    # 更接近抓取反馈。其他角色仍用 row2。
-    if char_id == "ritsu":
-        clips["held"] = clips["react"]
     for clip, picked in clips.items():
         if not picked:
             clips[clip] = clips["idle"]
