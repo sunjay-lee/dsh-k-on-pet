@@ -76,5 +76,13 @@
   },
   "license": "MIT",
   "author": "dsh-k-on-pet contributors",
-  "icon": "assets/icon.png"
+  "icon": "assets/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sunjay-lee/dsh-k-on-pet.git"
+  },
+  "homepage": "https://github.com/sunjay-lee/dsh-k-on-pet#readme",
+  "bugs": {
+    "url": "https://github.com/sunjay-lee/dsh-k-on-pet/issues"
+  }
 }

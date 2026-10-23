@@ -99,10 +99,8 @@ CLI 只把包装进 profile 的 `node_modules`；还需要让 profile 加载它�
 
 ### 从 GitHub 安装
 
-仓库发布后：
-
 ```bash
-dsh plugin --profile web add github:<owner>/dsh-k-on-pet
+dsh plugin --profile web add github:sunjay-lee/dsh-k-on-pet
 ```
 
 同样把 `dsh-k-on-pet` 加入 `dsh.profile.bundles` 后重启。仓库内已包含构建好的 `lib/` 与 `assets/`，安装时不需要编译。
