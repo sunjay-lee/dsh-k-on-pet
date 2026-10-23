@@ -14,29 +14,37 @@
     overflow: hidden;
   }
   .demo-card {
-    position: absolute; left: 34px; top: 30px; max-width: 430px;
-    padding: 18px 20px; border-radius: 16px; background: rgba(255,255,255,.72);
+    position: absolute; left: 24px; top: 20px; max-width: 400px;
+    padding: 16px 18px; border-radius: 16px; background: rgba(255,255,255,.72);
     border: 1px solid rgba(40,30,60,.08); box-shadow: 0 10px 30px rgba(40,30,60,.06);
-    color: #4a4352;
+    color: #4a4352; z-index: 2;
   }
-  .demo-card h1 { margin: 0 0 6px; font-size: 16px; font-weight: 600; letter-spacing: .01em; }
+  .demo-card h1 { margin: 0 0 6px; font-size: 15px; font-weight: 600; letter-spacing: .01em; }
   .demo-card p { margin: 0; font-size: 12px; line-height: 1.7; color: #7c7385; }
   .demo-card kbd {
     font: inherit; font-size: 11px; padding: 1px 5px; border-radius: 5px;
     border: 1px solid rgba(40,30,60,.16); background: rgba(255,255,255,.8);
   }
-  #status { position: absolute; left: 36px; bottom: 26px; font-size: 11px; color: #9a91a2; }
+  #status { position: absolute; left: 26px; bottom: 18px; font-size: 11px; color: #9a91a2; z-index: 2; }
+  /* 设置页测试面板：模拟 DSH 设置弹窗里的内容区。 */
+  #settings-root {
+    position: absolute; left: 24px; top: 128px; width: 448px; max-height: calc(100% - 168px);
+    overflow: auto; padding: 20px 24px; border-radius: 18px;
+    background: rgba(255,255,255,.9); border: 1px solid rgba(40,30,60,.1);
+    box-shadow: 0 18px 50px rgba(40,30,60,.08); z-index: 1; color: #4a4352;
+  }
 </style>
 </head>
 <body>
   <section class="demo-card">
     <h1>K-ON! 桌宠 · 本地渲染测试</h1>
     <p>
-      这是不启动 DSH 的静态 harness：下面这只宠物由真实的
-      <code>lib/client.js</code> 挂载。拖动它、单击、双击、右键，或点右上角齿轮。
+      这是不启动 DSH 的静态 harness：宠物由真实的 <code>lib/client.js</code> 挂载，
+      左侧面板模拟 DSH「设置 → K-ON! 桌宠」页面。拖动、单击、双击、右键，或点齿轮。
     </p>
   </section>
   <div id="status">booting…</div>
+  <div id="settings-root"></div>
   <div id="root"></div>
 
   <script src="/test/vendor/react.production.min.js"></script>
@@ -46,8 +54,8 @@
     window.addEventListener("error", (event) => window.__errors.push(String(event.message || event.error)));
     window.addEventListener("unhandledrejection", (event) => window.__errors.push(String(event.reason)));
 
-    window.__registered = null;
-    window.__injected = null;
+    window.__registered = [];
+    window.__injected = [];
     window.__ModuleLoader__ = {
       load({ id, factory }) {
         const req = (name) => {
@@ -72,23 +80,33 @@
           slots: {
             inject(name, generator) {
               const iterator = generator();
-              const first = iterator.next();
-              window.__injected = { name, first: first.value };
+              for (let next = iterator.next(); !next.done; next = iterator.next()) {
+                window.__injected.push({ name, value: next.value });
+              }
             },
             register(options, component) {
-              window.__registered = { options, component };
-              return { dispose() {} };
+              const entry = { options, component };
+              window.__registered.push(entry);
+              return entry;
             },
           },
         };
         window.__plugin.apply(ctx);
-        if (!window.__registered) throw new Error("插件没有注册 shell.overlay");
+        const overlay = window.__registered.find((entry) => entry.options.name === "shell.overlay");
+        const settings = window.__registered.find((entry) => entry.options.name === "settings.section");
+        if (!overlay) throw new Error("插件没有注册 shell.overlay");
+        if (!settings) throw new Error("插件没有注册 settings.section");
+        window.__overlay = overlay;
+        window.__settings = settings;
         window.__pluginName = window.__plugin.name;
         window.__pluginInject = window.__plugin.inject;
         ReactDOM.createRoot(document.getElementById("root")).render(
-          React.createElement(window.__registered.component)
+          React.createElement(overlay.component)
         );
-        status.textContent = "harness ready · " + window.__plugin.name + " → " + window.__registered.options.name;
+        ReactDOM.createRoot(document.getElementById("settings-root")).render(
+          React.createElement(settings.component)
+        );
+        status.textContent = "harness ready · " + window.__plugin.name + " → shell.overlay + settings.section";
         requestAnimationFrame(() => { window.__ready = true; });
       } catch (error) {
         status.textContent = "harness failed: " + (error && error.stack || error);

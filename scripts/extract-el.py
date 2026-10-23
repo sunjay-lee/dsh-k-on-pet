@@ -90,7 +90,8 @@ def decode_el(path):
         for x in range(W):
             v = buf[y * W + x]; a = alpha[y * W + x] if y * W + x < len(alpha) else 255
             px[x, y] = ((v >> 16) & 255, (v >> 8) & 255, v & 255, a)
-    return img
+    # EL scanlines are stored bottom-up; flip once here so the atlas is upright.
+    return img.transpose(Image.FLIP_TOP_BOTTOM)
 
 def main():
     ap = argparse.ArgumentParser()

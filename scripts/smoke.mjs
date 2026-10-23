@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * 本地冒烟测试：用系统 Chrome 打开 test/harness.html，真实加载 lib/client.js，
- * 检查渲染、点击、双击、右键菜单、拖拽与切角色，并生成 docs/preview.png。
+ * 检查渲染、点击、双击、右键菜单、设置页、拖拽/记忆位置与多角色开关，
+ * 并生成 docs/preview.png。
  *
  * 运行：node scripts/smoke.mjs
  */
@@ -140,10 +141,13 @@ try {
 
 cdp.on((message) => {
 	if (message.method === "Runtime.exceptionThrown") {
-		consoleErrors.push(message.params.exceptionDetails?.exception?.description || message.params.exceptionDetails?.text || "exception");
+		const details = message.params.exceptionDetails;
+		const description = details?.exception?.description || details?.text || "exception";
+		if (!/NotAllowedError|play\(\) failed/.test(description)) consoleErrors.push(description);
 	}
 	if (message.method === "Runtime.consoleAPICalled" && message.params.type === "error") {
-		consoleErrors.push(message.params.args.map((arg) => arg.value ?? arg.description).join(" "));
+		const text = message.params.args.map((arg) => arg.value ?? arg.description).join(" ");
+		if (!/NotAllowedError|play\(\) failed/.test(text)) consoleErrors.push(text);
 	}
 	if (message.method === "Network.responseReceived") {
 		const { response } = message.params;
@@ -188,8 +192,40 @@ async function mouse(type, x, y, button = "left", clickCount = 1) {
 	});
 }
 
-async function actorBox() {
-	return evaluate(`(() => { const r = document.querySelector('.konp-actor').getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:r.height }; })()`);
+async function actorBox(index = 0) {
+	return evaluate(`(() => { const el = document.querySelectorAll('.konp-actor')[${index}]; if (!el) return null; const r = el.getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:r.height }; })()`);
+}
+
+async function setSwitch(label, on) {
+	return evaluate(`(() => {
+		const el = [...document.querySelectorAll('.konp-settings [role="switch"]')]
+			.find((node) => node.getAttribute('aria-label') === ${JSON.stringify(label)});
+		if (!el) throw new Error('找不到开关：' + ${JSON.stringify(label)});
+		const checked = el.getAttribute('aria-checked') === 'true';
+		if (checked !== ${on}) el.click();
+		return true;
+	})()`);
+}
+
+async function clickButton(text) {
+	return evaluate(`(() => {
+		const el = [...document.querySelectorAll('button')].find((node) => node.textContent.trim() === ${JSON.stringify(text)});
+		if (!el) throw new Error('找不到按钮：' + ${JSON.stringify(text)});
+		el.click();
+		return true;
+	})()`);
+}
+
+async function setScale(value) {
+	return evaluate(`(() => {
+		const input = document.querySelector('.konp-settings input[type="range"]');
+		if (!input) throw new Error('找不到大小滑块');
+		const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+		setter.call(input, String(${value}));
+		input.dispatchEvent(new Event('input', { bubbles: true }));
+		input.dispatchEvent(new Event('change', { bubbles: true }));
+		return true;
+	})()`);
 }
 
 function check(condition, message) {
@@ -207,7 +243,10 @@ try {
 	await sleep(1200);
 
 	check(await evaluate("window.__pluginName === 'dsh-k-on-pet'"), "插件名与包名一致");
-	check(await evaluate("window.__registered && window.__registered.options.name === 'shell.overlay'"), "注册到 shell.overlay");
+	check(await evaluate("window.__registered.length === 2"), "注册了两个 slot（overlay + settings）");
+	check(await evaluate("window.__overlay.options.name === 'shell.overlay'"), "注册到 shell.overlay");
+	check(await evaluate("window.__settings.options.name === 'settings.section' && typeof window.__settings.options.label === 'function'"), "注册到 settings.section 且带导航 label");
+	check(await evaluate("window.__settings.options.label() === 'K-ON! 桌宠'"), "设置分区名称为 K-ON! 桌宠");
 	check(await evaluate("!document.querySelector('.konp-fallback')"), "素材加载成功（无 fallback）");
 
 	const painted = await evaluate(`(() => {
@@ -220,6 +259,13 @@ try {
 	})()`);
 	check(painted > 800, `立绘已绘制（不透明像素 ${painted}）`);
 
+	// ---- 设置页基础 ----
+	const charSwitches = await evaluate(`[...document.querySelectorAll('.konp-settings [role="switch"]')].filter((el) => (el.getAttribute('aria-label') || '').startsWith('显示')).length`);
+	check(charSwitches === 5, `设置页列出 5 个角色开关（实际 ${charSwitches}）`);
+	check(await evaluate("document.querySelectorAll('.konp-settings .konp-set-row').length >= 8"), "设置页包含角色、大小、语音、闲聊、关怀等条目");
+	check(await evaluate("document.querySelector('.konp-settings .konp-set-thumb') && getComputedStyle(document.querySelector('.konp-settings .konp-set-thumb')).backgroundImage.includes('sheet.png')"), "设置页角色缩略图使用原版 sheet");
+
+	// ---- 单击 / 双击 ----
 	let box = await actorBox();
 	await mouse("mousePressed", box.x + box.width / 2, box.y + box.height / 2);
 	await mouse("mouseReleased", box.x + box.width / 2, box.y + box.height / 2);
@@ -238,58 +284,112 @@ try {
 	const doubleBubble = await evaluate("var el=document.querySelector('.konp-bubble'); el && el.textContent");
 	check(typeof doubleBubble === "string" && doubleBubble.includes("❤"), `双击出现爱心气泡：「${doubleBubble}」`);
 
+	// ---- 右键菜单隐藏单只角色 ----
 	box = await actorBox();
 	await mouse("mousePressed", box.x + box.width / 2, box.y + box.height / 2, "right");
 	await mouse("mouseReleased", box.x + box.width / 2, box.y + box.height / 2, "right");
 	await waitUntil("!!document.querySelector('.konp-menu')", 3000, "右键菜单");
-	check(await evaluate("document.querySelectorAll('.konp-char').length === 5"), "菜单列出 5 位角色");
+	check(await evaluate("document.querySelector('.konp-hide') && document.querySelector('.konp-hide').textContent.includes('隐藏')"), "右键菜单提供「隐藏这只」");
+	await clickButton("隐藏平泽唯");
+	await waitUntil("document.querySelectorAll('.konp-canvas').length === 0", 3000, "隐藏后无角色");
+	check(await evaluate("document.querySelector('.konp-settings [aria-label=\"显示平泽唯\"]').getAttribute('aria-checked') === 'false'"), "隐藏后设置项同步关闭");
 
-	await evaluate(`(() => { const b = [...document.querySelectorAll('.konp-char')].find((el) => el.textContent.includes('秋山澪')); b.click(); return true; })()`);
-	await sleep(1400);
-	check(await evaluate("!document.querySelector('.konp-menu')"), "选择角色后菜单关闭");
-	check(await evaluate("!document.querySelector('.konp-fallback')"), "切换角色后素材正常");
+	// ---- 从设置页显示秋山澪 ----
+	await setSwitch("显示秋山澪", true);
+	await waitUntil("document.querySelectorAll('.konp-canvas').length === 1", 3000, "秋山澪出现");
+	await sleep(900);
+	check(await evaluate("!document.querySelector('.konp-fallback')"), "新角色素材正常");
+	const mioPainted = await evaluate(`(() => {
+		const canvas = document.querySelector('.konp-canvas');
+		const ctx = canvas.getContext('2d');
+		const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+		let opaque = 0;
+		for (let i = 3; i < data.length; i += 4) if (data[i] > 16) opaque += 1;
+		return opaque;
+	})()`);
+	check(mioPainted > 800, `秋山澪立绘已绘制（不透明像素 ${mioPainted}）`);
 
-	box = await actorBox();
+	// ---- 多角色：再显示平泽唯 ----
+	await setSwitch("显示平泽唯", true);
+	await waitUntil("document.querySelectorAll('.konp-canvas').length === 2", 3000, "两个角色同时存在");
+	await sleep(900);
+	check(await evaluate("document.querySelectorAll('.konp-actor').length === 2"), "多角色同时渲染");
+	const distinct = await evaluate(`(() => {
+		const [a, b] = [...document.querySelectorAll('.konp-actor')].map((el) => el.getBoundingClientRect().x);
+		return Math.abs(a - b) > 20;
+	})()`);
+	check(distinct, "多角色默认位置错开，不重叠");
+
+	// ---- 大小滑块 ----
+	await setScale(2);
+	await waitUntil("document.querySelector('.konp-actor').style.width === '192px'", 2000, "放大到 2.0×");
+	const scaledWidth = await evaluate("document.querySelector('.konp-actor').getBoundingClientRect().width");
+	check(scaledWidth === 192, `大小设置生效（${scaledWidth}px）`);
+	await setScale(1.5);
+	await waitUntil("document.querySelector('.konp-actor').style.width === '144px'", 2000, "恢复到 1.5×");
+
+	// ---- 拖拽并记忆位置 ----
+	box = await actorBox(0);
 	const before = { x: box.x, y: box.y };
 	await mouse("mousePressed", box.x + box.width / 2, box.y + box.height / 2);
 	await sleep(60);
-	await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x + box.width / 2 - 90, y: box.y + box.height / 2 - 60, button: "left", buttons: 1, clickCount: 1 });
+	await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x + box.width / 2 - 90, y: box.y + box.height / 2 - 70, button: "left", buttons: 1, clickCount: 1 });
 	await sleep(60);
-	await mouse("mouseReleased", box.x + box.width / 2 - 90, box.y + box.height / 2 - 60);
-	await sleep(800);
-	box = await actorBox();
+	await mouse("mouseReleased", box.x + box.width / 2 - 90, box.y + box.height / 2 - 70);
+	await sleep(900);
+	box = await actorBox(0);
 	check(Math.abs(box.x - before.x) > 40 || Math.abs(box.y - before.y) > 30, `拖拽生效（${before.x.toFixed(0)},${before.y.toFixed(0)} → ${box.x.toFixed(0)},${box.y.toFixed(0)}）`);
+	const stored = await evaluate(`(() => { try { const raw = localStorage.getItem('dsh-k-on-pet:v2'); if (!raw) return null; const data = JSON.parse(raw); return data && data.positions ? Object.keys(data.positions) : null; } catch { return null; } })()`);
+	check(Array.isArray(stored) && stored.length > 0, `拖动后位置写入 localStorage（${JSON.stringify(stored)}）`);
 
-	// 回到右下角、摆好姿势，截一张 README 预览图。
-	await evaluate(`(() => {
-		const buttons = [...document.querySelectorAll('button')];
-		const gear = document.querySelector('.konp-gear');
-		gear.click();
-		return true;
-	})()`);
-	await sleep(200);
-	await evaluate(`(() => { const b = [...document.querySelectorAll('.konp-char')].find((el) => el.textContent.includes('平泽唯')); if (b) b.click(); return true; })()`);
-	await sleep(1200);
-	await evaluate(`document.querySelector('.konp-gear').click()`);
-	await sleep(250);
-	await evaluate(`(() => { const reset = [...document.querySelectorAll('.konp-reset')].pop(); if (reset) reset.click(); return true; })()`);
-	await sleep(600);
-	box = await actorBox();
+	// ---- 单个角色回到右下角 ----
+	box = await actorBox(0);
+	await mouse("mousePressed", box.x + box.width / 2, box.y + box.height / 2, "right");
+	await mouse("mouseReleased", box.x + box.width / 2, box.y + box.height / 2, "right");
+	await waitUntil("!!document.querySelector('.konp-menu')", 3000, "再次打开菜单");
+	await clickButton("这只回到右下角");
+	await sleep(700);
+	const afterReset = await evaluate(`(() => { try { const raw = localStorage.getItem('dsh-k-on-pet:v2'); if (!raw) return null; const data = JSON.parse(raw); return data && data.positions ? Object.keys(data.positions).length : 0; } catch { return null; } })()`);
+	check(afterReset === 0, "重置后该角色位置记录被清除");
+	check(await evaluate("!document.querySelector('.konp-menu')"), "重置后菜单关闭");
+
+	// ---- 全部隐藏 / 全部显示 ----
+	await clickButton("全部隐藏");
+	await waitUntil("document.querySelectorAll('.konp-canvas').length === 0", 3000, "全部隐藏");
+	check(await evaluate("document.querySelectorAll('.konp-settings [aria-label^=\"显示\"][aria-checked=\"true\"]').length === 0"), "全部隐藏后所有角色开关关闭");
+	await setSwitch("显示平泽唯", true);
+	await waitUntil("document.querySelectorAll('.konp-canvas').length === 1", 3000, "只显示平泽唯");
+	check(await evaluate("document.querySelector('.konp-settings .konp-set-head span').textContent.trim() === '1 / 5'"), "设置页计数正确（1 / 5）");
+
+	// ---- 准备 README 预览图 ----
+	await clickButton("重置所有位置");
+	await sleep(700);
+	box = await actorBox(0);
 	await mouse("mousePressed", box.x + box.width / 2, box.y + box.height / 2 - 10);
 	await mouse("mouseReleased", box.x + box.width / 2, box.y + box.height / 2 - 10);
 	await sleep(500);
-	box = await actorBox();
+	box = await actorBox(0);
 	const clip = {
-		x: Math.max(0, box.x - 130),
-		y: Math.max(0, box.y - 190),
-		width: Math.min(380, 1280 - Math.max(0, box.x - 130)),
-		height: Math.min(380, 800 - Math.max(0, box.y - 190)),
+		x: Math.max(0, box.x - 210),
+		y: Math.max(0, box.y - 240),
+		width: Math.min(460, 1280 - Math.max(0, box.x - 210)),
+		height: Math.min(440, 800 - Math.max(0, box.y - 240)),
 		scale: 1,
 	};
 	await mkdir(join(root, "docs"), { recursive: true });
 	const shot = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true, clip });
 	await writeFile(join(root, "docs/preview.png"), Buffer.from(shot.data, "base64"));
 	console.log("  ✓ 已生成 docs/preview.png");
+
+	// 设置页截图（不做任何交互，保持当前 1/5 状态）。
+	const panel = await evaluate(`(() => { const el = document.getElementById('settings-root'); const r = el.getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:Math.min(560, r.height) }; })()`);
+	const panelShot = await cdp.send("Page.captureScreenshot", {
+		format: "png",
+		fromSurface: true,
+		clip: { x: panel.x, y: panel.y, width: panel.width, height: panel.height, scale: 1 },
+	});
+	await writeFile(join(root, "docs/settings.png"), Buffer.from(panelShot.data, "base64"));
+	console.log("  ✓ 已生成 docs/settings.png");
 
 } catch (error) {
 	failures.push(error.message);

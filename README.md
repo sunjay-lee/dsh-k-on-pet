@@ -2,7 +2,7 @@
 
 把《K-ON! 轻音少女》的五位角色挂进 **DeepSeek Harness** 的 Web 界面右下角。
 
-这是一个 **DSH 客户端插件**：不改 DSH 源码，不另起窗口，安装后直接悬浮在 Web GUI 上。点击说话、拖动乱跑、双击比心、右键换人；闲置会打瞌睡，忙久了会提醒你喝水休息。
+这是一个 **DSH 客户端插件**：不改 DSH 源码，不另起窗口，安装后直接悬浮在 Web GUI 上。点击说话、拖动乱跑、双击比心；在 DSH 设置里开关角色、同时显示多人、调大小；闲置会打瞌睡，忙久了会提醒你喝水休息。
 
 > 非官方同人移植，与原作者、京都动画、芳文社均无关联。资产版权说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
@@ -11,6 +11,10 @@
 <sub>真实 DSH 0.2.1-rc.2 右下角实拍：</sub>
 
 <img src="docs/in-dsh.png" width="280" alt="在 DSH 右下角" />
+
+<sub>DSH「设置 → K-ON! 桌宠」分区：</sub>
+
+<img src="docs/in-dsh-settings.png" width="560" alt="DSH 设置中的 K-ON! 桌宠分区" />
 
 ## 角色与内容
 
@@ -35,8 +39,10 @@
 - **闲置**：约 4 分钟无操作进入 `sleep`，再久一点冒 `Zzz` 气泡；任意交互唤醒。
 - **随机闲聊**：每 2.5–5 分钟说一句。
 - **关怀提醒**：每 50 分钟提醒喝水 / 起身 / 看远处。
-- **右键菜单**：换角色、缩放（1.0–2.4）、静音、重置位置。菜单是页面内浮层，不依赖浏览器弹窗。
-- **记忆**：角色、缩放、静音、位置存在浏览器 `localStorage`，刷新后恢复。
+- **角色设置**：DSH **设置 → K-ON! 桌宠** 里独立开关五位角色，可同时显示；支持全部显示 / 全部隐藏。
+- **外观与行为**：统一大小（0.8–2.0×）、语音、随机闲聊、关怀提醒，以及一键恢复默认。
+- **右键菜单**：隐藏这只、把这只重置回右下角。菜单是页面内浮层，不依赖浏览器弹窗。
+- **记忆**：可见角色、大小、语音/闲聊/关怀开关、每个角色各自的坐标，存在浏览器 `localStorage`，刷新后恢复。
 - **不挡操作**：只有宠物本体接收指针事件，其余区域点击穿透。
 - **无网络、无模型调用**：不请求外部接口，不上传任何数据。
 
@@ -96,7 +102,7 @@ dsh plugin --profile web remove dsh-k-on-pet
 curl -s http://127.0.0.1:3080/dsh-k-on-pet/characters/yui/meta.json | head
 ```
 
-能返回 JSON 说明宿主半已挂载；页面右下角出现唯，说明客户端半已渲染。
+能返回 JSON 说明宿主半已挂载；页面右下角出现唯，说明客户端半已渲染；打开 **设置 → K-ON! 桌宠** 能看到角色开关，说明设置分区已注册。
 
 ## 使用
 
@@ -105,11 +111,12 @@ curl -s http://127.0.0.1:3080/dsh-k-on-pet/characters/yui/meta.json | head
 | 左键单击 | 动作 + 语音 + 气泡 |
 | 左键双击 | 比心台词 |
 | 按住拖动 | 拎起；松手按速度甩出 |
-| 右键 / 悬停右上角齿轮 | 设置菜单 |
-| 菜单「重置位置」 | 回到右下角 |
-| 菜单「静音」 | 关闭语音（动作和气泡保留） |
+| 右键 / 悬停右上角齿轮 | 宠物菜单 |
+| 菜单「隐藏这只」 | 关闭该角色，可在 DSH 设置里重新打开 |
+| 菜单「回到右下角」 | 清除该角色的位置记忆 |
+| DSH 设置 → K-ON! 桌宠 | 角色显隐、大小、语音、闲聊、关怀、恢复默认 |
 
-所有设置只保存在当前浏览器。换浏览器或清空站点数据会恢复默认（唯、1.5×、右下角）。
+所有设置只保存在当前浏览器。换浏览器或清空站点数据会恢复默认（仅唯、1.5×、右下角）。DSH 设置页和宠物右键菜单读写的是同一份偏好。
 
 ## 隐私与权限
 
@@ -122,7 +129,7 @@ curl -s http://127.0.0.1:3080/dsh-k-on-pet/characters/yui/meta.json | head
 
 | 项 | 说明 |
 | --- | --- |
-| DSH | `0.2.0-rc.1` / `0.2.0-rc.2` / `0.2.1-rc.2` 标记兼容；`0.2.1-rc.2` 实测 |
+| DSH | `0.2.0-rc.1` / `0.2.0-rc.2` / `0.2.1-rc.2` 标记兼容；`0.2.1-rc.2` 实测 overlay 与设置分区 |
 | profile | `web`（桌面端 / 浏览器） |
 | 平台 | 依赖 Canvas 2D、WebAudio、Pointer Events、`localStorage` |
 | 不适用 | TUI / headless profile（没有 `shell.overlay` 与浏览器 API） |
@@ -160,13 +167,13 @@ node scripts/check.mjs
 # 2. 浏览器冒烟测试（需要 Chrome / Chromium）
 node scripts/smoke.mjs
 # 或指定浏览器路径
-CHROME=/usr/bin/chromium node scripts/smoke.mjs
+CHROME_BIN=/usr/bin/chromium node scripts/smoke.mjs
 
 # 3. 修改图集边缘后重建 meta.json
 python3 scripts/build-meta.py
 ```
 
-`smoke.mjs` 会起一个本地静态服务器，加载 `test/harness.html`，用 CDP 检查：浮层挂载、canvas 有像素、点击出气泡、拖动改变位置、右键菜单出现、菜单切换角色、静音生效、刷新后设置保留。harness 使用 `test/vendor/` 里内置的 React 18 UMD，不需要 `npm install`，也不访问网络。
+`smoke.mjs` 会起一个本地静态服务器，加载 `test/harness.html`，用 CDP 检查：overlay + settings 两个 slot 的注册、canvas 有像素、点击/双击气泡、拖动与位置持久化、右键隐藏、重置位置、多角色同时渲染、大小设置、全部隐藏、设置页计数，并生成 `docs/preview.png` 与 `docs/settings.png`。harness 使用 `test/vendor/` 里内置的 React 18 UMD，不需要 `npm install`，也不访问网络。
 
 ### 重新生成资产
 
@@ -181,7 +188,8 @@ python3 scripts/build-meta.py
 
 ## 实现要点
 
-- 通过 `ctx.slots.inject("@deepseek-ai/dsh-client-ui-layout")` 等待 `shell.overlay` 槽位，再 `ctx.slots.register({ name: "shell.overlay" }, KOnPet)` 挂载。浮层是 `position:fixed; inset:0; pointer-events:none`，宠物本体单独开启 `pointer-events:auto`。
+- 通过 `ctx.slots.inject("@deepseek-ai/dsh-client-ui-layout")` 等待 `shell.overlay` 槽位，再 `ctx.slots.register({ name: "shell.overlay" }, KOnPet)` 挂载浮层；同时用 `settings.section` 注册设置页，导航名为 `K-ON! 桌宠`。浮层是 `position:fixed; inset:0; pointer-events:none`，宠物本体单独开启 `pointer-events:auto`。
+- 每个可见角色独立持有 Canvas、动画状态机和位置；设置通过 `useSyncExternalStore` 在 `shell.overlay` 与设置页之间共享，并写入同一个 `localStorage` key。
 - 用 `ctx.effect()` 注册宿主路由，响应体直接从安装目录读文件，带正确的 `Content-Type` 与 `Cache-Control`。
 - 精灵图按 96×96 网格切分，`meta.json` 给出每帧 bbox；绘制时只画 bbox 区域，避免透明边影响对位。
 - 语音用 `HTMLAudioElement` 播放，点击后预热；静音直接跳过播放，不创建音频对象。
