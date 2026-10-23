@@ -125,6 +125,7 @@
 			care: true,
 			positions: {},
 			table: true,
+			tableLocked: false,
 			tablePos: null,
 			seats: {},
 		};
@@ -154,6 +155,7 @@
 		}
 
 		const table = source.table !== false;
+		const tableLocked = source.tableLocked === true;
 		const tablePos = source.tablePos && Number.isFinite(source.tablePos.x) && Number.isFinite(source.tablePos.y)
 			? { x: Number(source.tablePos.x), y: Number(source.tablePos.y) }
 			: null;
@@ -173,6 +175,7 @@
 			care: source.care !== false,
 			positions,
 			table,
+			tableLocked,
 			tablePos,
 			seats,
 		};
@@ -195,6 +198,12 @@
 			x: Math.round(clamp(Number(x) || 0, 0, Math.max(0, viewportWidth - width))),
 			y: Math.round(clamp(Number(y) || 0, 0, Math.max(0, viewportHeight - height))),
 		};
+	}
+
+	function tableContainsPoint(px, py, tableX, tableY, scale, margin = 0) {
+		const pad = Math.max(0, Number(margin) || 0);
+		return px >= tableX - pad && px <= tableX + TABLE.width * scale + pad &&
+			py >= tableY - pad && py <= tableY + TABLE.height * scale + pad;
 	}
 
 	function tableSeatRect(seat, tableX, tableY, scale) {
@@ -346,6 +355,7 @@
 		clampTablePosition,
 		tableSeatRect,
 		tableSeatAt,
+		tableContainsPoint,
 		boundsFor,
 		defaultPosition,
 		stepThrow,

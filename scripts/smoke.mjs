@@ -259,7 +259,7 @@ try {
 	check(tablePainted > 1000, `桌子已绘制（不透明像素 ${tablePainted}）`);
 
 	// ---- 拖到桌子座位 / 拖出离座 ----
-	const seatPoint = await evaluate(`(() => { const t = document.querySelector('.konp-table').getBoundingClientRect(); return { x: t.x + (112 + 32) * 1.5, y: t.y + (32 + 64) * 1.5 }; })()`);
+	const seatPoint = await evaluate(`(() => { const t = document.querySelector('.konp-table').getBoundingClientRect(); return { x: t.x + t.width / 2, y: t.y + t.height * 0.82 }; })()`);
 	const seatActorBox = await actorBox(0);
 	await mouse("mousePressed", seatActorBox.x + seatActorBox.width / 2, seatActorBox.y + seatActorBox.height / 2);
 	await sleep(120);
@@ -281,6 +281,37 @@ try {
 	await waitUntil("!document.querySelector('.konp-table')", 2000, "关闭桌子");
 	await setSwitch("显示桌子", true);
 	await waitUntil("!!document.querySelector('.konp-table')", 2000, "重新打开桌子");
+
+	// ---- 茶桌右键菜单：锁定 / 全部入座 / 全部离座 ----
+	const tableGrabPoint = await evaluate(`(() => { const t = document.querySelector('.konp-table').getBoundingClientRect(); return { x: t.x + t.width / 2, y: t.y + t.height - 28 }; })()`);
+	await mouse("mousePressed", tableGrabPoint.x, tableGrabPoint.y, "right");
+	await mouse("mouseReleased", tableGrabPoint.x, tableGrabPoint.y, "right");
+	await waitUntil("!!document.querySelector('.konp-menu')", 3000, "茶桌右键菜单");
+	check(await evaluate("document.querySelector('.konp-menu').textContent.includes('固定桌子位置')"), "茶桌菜单提供固定位置");
+	await clickButton("固定桌子位置");
+	check(await evaluate("JSON.parse(localStorage.getItem('dsh-k-on-pet:v2')).tableLocked === true"), "锁定茶桌写入设置");
+	const lockedBefore = await evaluate("document.querySelector('.konp-table').getBoundingClientRect().x");
+	await mouse("mousePressed", tableGrabPoint.x, tableGrabPoint.y);
+	await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: tableGrabPoint.x + 60, y: tableGrabPoint.y, button: "left", buttons: 1, clickCount: 1 });
+	await mouse("mouseReleased", tableGrabPoint.x + 60, tableGrabPoint.y);
+	await sleep(250);
+	const lockedAfter = await evaluate("document.querySelector('.konp-table').getBoundingClientRect().x");
+	check(Math.abs(lockedAfter - lockedBefore) < 2, "锁定后拖动茶桌不移动");
+	await mouse("mousePressed", tableGrabPoint.x, tableGrabPoint.y, "right");
+	await mouse("mouseReleased", tableGrabPoint.x, tableGrabPoint.y, "right");
+	await waitUntil("!!document.querySelector('.konp-menu')", 3000, "再次打开茶桌菜单");
+	await clickButton("取消固定位置");
+	await mouse("mousePressed", tableGrabPoint.x, tableGrabPoint.y, "right");
+	await mouse("mouseReleased", tableGrabPoint.x, tableGrabPoint.y, "right");
+	await waitUntil("!!document.querySelector('.konp-menu')", 3000, "打开茶桌菜单入座");
+	await clickButton("全部角色入座");
+	await waitUntil("document.querySelectorAll('.konp-table-seat').length === 1 && document.querySelectorAll('.konp-canvas').length === 0", 3000, "全部入座");
+	await mouse("mousePressed", tableGrabPoint.x, tableGrabPoint.y, "right");
+	await mouse("mouseReleased", tableGrabPoint.x, tableGrabPoint.y, "right");
+	await waitUntil("!!document.querySelector('.konp-menu')", 3000, "打开茶桌菜单离座");
+	await clickButton("全部角色离座");
+	await waitUntil("document.querySelectorAll('.konp-table-seat').length === 0 && document.querySelectorAll('.konp-canvas').length === 1", 3000, "全部离座");
+	await sleep(900);
 
 	const painted = await evaluate(`(() => {
 		const canvas = document.querySelector('.konp-canvas');
@@ -381,6 +412,29 @@ try {
 	check(Array.isArray(stored) && stored.length > 0, `拖动后位置写入 localStorage（${JSON.stringify(stored)}）`);
 
 	// ---- 慢速拖拽不触发下落 ----
+	// Isolate this assertion from the table and from earlier multi-actor state:
+	// one Yui at the default bottom-right, table closed.
+	await setSwitch("显示桌子", false);
+	await waitUntil("!document.querySelector('.konp-table')", 2000, "下降前关闭桌子");
+	await clickButton("全部隐藏");
+	await setSwitch("显示平泽唯", true);
+	await waitUntil("document.querySelectorAll('.konp-canvas').length === 1", 3000, "下降前只显示平泽唯");
+	await sleep(300);
+	const isolated = await actorBox(0);
+	await mouse("mousePressed", isolated.x + isolated.width / 2, isolated.y + isolated.height / 2, "right");
+	await mouse("mouseReleased", isolated.x + isolated.width / 2, isolated.y + isolated.height / 2, "right");
+	await waitUntil("!!document.querySelector('.konp-menu')", 3000, "打开下降前菜单");
+	await clickButton("这只回到右下角");
+	await sleep(500);
+	// A fast drag may still be finishing its throw; wait until the actor stops
+	// moving so this test measures the slow-drag path only.
+	let lastBox = null;
+	for (let i = 0; i < 20; i += 1) {
+		const current = await actorBox(0);
+		if (lastBox && Math.abs(current.x - lastBox.x) < 1 && Math.abs(current.y - lastBox.y) < 1) break;
+		lastBox = current;
+		await sleep(150);
+	}
 	box = await actorBox(0);
 	const startY = box.y;
 	await mouse("mousePressed", box.x + box.width / 2, box.y + box.height / 2);
@@ -395,7 +449,7 @@ try {
 			clickCount: 1,
 		});
 	}
-	await sleep(180);
+	await sleep(350);
 	const releasedY = box.y - 160;
 	await mouse("mouseReleased", box.x + box.width / 2, box.y + box.height / 2 - 160);
 	await sleep(900);
@@ -414,6 +468,8 @@ try {
 	check(await evaluate("!document.querySelector('.konp-menu')"), "重置后菜单关闭");
 
 	// ---- 全部隐藏 / 全部显示 ----
+	await setSwitch("显示桌子", true);
+	await waitUntil("!!document.querySelector('.konp-table')", 2000, "恢复桌子");
 	await clickButton("全部隐藏");
 	await waitUntil("document.querySelectorAll('.konp-canvas').length === 0", 3000, "全部隐藏");
 	check(await evaluate("document.querySelectorAll('.konp-settings [aria-label^=\"显示\"][aria-checked=\"true\"]').length === 1 && document.querySelector('.konp-settings [aria-label=\"显示桌子\"]').getAttribute('aria-checked') === 'true'"), "全部隐藏后角色开关关闭、桌子开关保持");

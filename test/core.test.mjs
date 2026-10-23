@@ -142,3 +142,16 @@ test("frameRect maps frame indexes to sheet cells", () => {
 	assert.deepEqual(Core.frameRect(7, 6), { sx: 96, sy: 96, size: 96 });
 	assert.deepEqual(Core.frameRect(41, 7), { sx: 576, sy: 480, size: 96 });
 });
+
+test("table hit area covers the whole table and nothing far outside", () => {
+	assert.equal(Core.tableContainsPoint(150, 450, 100, 400, 1), true);
+	assert.equal(Core.tableContainsPoint(100, 400, 100, 400, 1), true);
+	assert.equal(Core.tableContainsPoint(99, 450, 100, 400, 1), false);
+	assert.equal(Core.tableContainsPoint(150, 561, 100, 400, 1), false);
+	assert.equal(Core.tableContainsPoint(99, 450, 100, 400, 1, 2), true);
+});
+
+test("table lock persists through normalize/default", () => {
+	assert.equal(Core.createDefaultSettings().tableLocked, false);
+	assert.equal(Core.normalizeSettings({ tableLocked: true }).tableLocked, true);
+});

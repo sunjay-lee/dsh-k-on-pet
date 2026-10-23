@@ -35,10 +35,11 @@
 			const tableDefaultPosition = Core.tableDefaultPosition;
 			const clampTablePosition = Core.clampTablePosition;
 			const tableSeatAt = Core.tableSeatAt;
+			const tableContainsPoint = Core.tableContainsPoint;
 
 			const CSS = `
 .konp-root{position:fixed;inset:0;z-index:2147482000;pointer-events:none;font-family:inherit}
-.konp-actor{position:absolute;left:0;top:0;pointer-events:auto;cursor:grab;touch-action:none;will-change:transform;user-select:none;-webkit-user-select:none}
+.konp-actor{position:absolute;left:0;top:0;z-index:2147482001;pointer-events:auto;cursor:grab;touch-action:none;will-change:transform;user-select:none;-webkit-user-select:none}
 .konp-actor.is-drag{cursor:grabbing}
 .konp-actor:focus-visible{outline:2px solid #8a6aa8;outline-offset:4px;border-radius:12px}
 .konp-canvas{display:block;width:100%;height:100%;image-rendering:pixelated;transform-origin:50% 88%;filter:drop-shadow(0 5px 8px rgba(0,0,0,.13));transition:filter .2s ease}
@@ -89,8 +90,9 @@
 .konp-table-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;image-rendering:pixelated;pointer-events:none}
 .konp-table-back{z-index:0;filter:drop-shadow(0 8px 14px rgba(0,0,0,.14))}
 .konp-table-front{z-index:3}
-.konp-table-grab{position:absolute;left:0;right:0;z-index:1;cursor:grab;touch-action:none}
+.konp-table-grab{position:absolute;inset:0;z-index:1;cursor:grab;touch-action:none}
 .konp-table.is-drag .konp-table-grab{cursor:grabbing}
+.konp-table.is-locked .konp-table-grab{cursor:default}
 .konp-table-seat{position:absolute;display:block;image-rendering:pixelated;cursor:grab;touch-action:none;filter:drop-shadow(0 3px 5px rgba(0,0,0,.12))}
 .konp-table-seat:focus-visible{outline:2px solid #8a6aa8;outline-offset:3px;border-radius:8px}
 .konp-table-ghost{position:fixed;display:block;pointer-events:none;image-rendering:pixelated;filter:drop-shadow(0 8px 12px rgba(0,0,0,.2));z-index:2147482400}
@@ -804,10 +806,14 @@
 					const now = performance.now();
 					const idleFor = now - pointer.lastT;
 					const speed = Math.hypot(pointer.vx || 0, pointer.vy || 0);
-					const fling = idleFor < 120 && speed >= 260;
+					// A pause of ~0.24s means the user stopped to place the character; only a
+					// genuinely quick flick should launch it again.
+					const fling = idleFor < 240 && speed >= 260;
 					// Slow drags can finish on the table; seat before persisting the
 					// free position so the actor disappears into its table pose.
-					if (!fling && onDropSeat && onDropSeat(member.id, posRef.current)) return;
+					// Dropping anywhere on the table seats the character, even after a
+					// quick flick; the table is an explicit drop target.
+					if (onDropSeat && onDropSeat(member.id, posRef.current)) return;
 					if (engine) {
 						if (fling) {
 							engine.mode = "throw";
@@ -1017,7 +1023,7 @@
 				);
 			}
 
-			function TableScene({ settings, tablePos, onTableMove, onTableCommit, onUnseat, onSeatDrop }) {
+			function TableScene({ settings, tablePos, onTableMove, onTableCommit, onUnseat, onSeatDrop, updateSettings }) {
 				const scale = settings.scale;
 				const width = TABLE.width * scale;
 				const height = TABLE.height * scale;
@@ -1027,11 +1033,28 @@
 				const tableDrag = useRef(null);
 				const seatDrag = useRef(null);
 				const cleanupRef = useRef(() => {});
+				const menuRef = useRef(null);
 				const [dragging, setDragging] = useState(false);
 				const [ghost, setGhost] = useState(null);
+				const [menu, setMenu] = useState(null);
 				const [failed, setFailed] = useState(false);
 
 				useEffect(() => () => cleanupRef.current(), []);
+
+				useEffect(() => {
+					if (!menu) return undefined;
+					const onDown = (event) => {
+						if (menuRef.current && menuRef.current.contains(event.target)) return;
+						setMenu(null);
+					};
+					const onKey = (event) => { if (event.key === "Escape") setMenu(null); };
+					window.addEventListener("pointerdown", onDown, true);
+					window.addEventListener("keydown", onKey);
+					return () => {
+						window.removeEventListener("pointerdown", onDown, true);
+						window.removeEventListener("keydown", onKey);
+					};
+				}, [menu]);
 
 				useEffect(() => {
 					const back = backRef.current && backRef.current.getContext("2d");
@@ -1079,8 +1102,35 @@
 					};
 				}, []);
 
+				const openMenu = (event) => {
+					event.preventDefault();
+					event.stopPropagation();
+					const left = Math.max(8, Math.min(event.clientX, window.innerWidth - 260));
+					const top = Math.max(8, Math.min(event.clientY, window.innerHeight - 286));
+					setMenu({ left, top });
+				};
+				const toggleLock = () => {
+					updateSettings((current) => ({ ...current, tableLocked: !current.tableLocked }));
+					setMenu(null);
+				};
+				const seatAll = () => {
+					const seats = {};
+					for (const member of ROSTER) seats[member.id] = true;
+					updateSettings((current) => ({ ...current, seats }));
+					setMenu(null);
+				};
+				const unseatAll = () => {
+					updateSettings((current) => ({ ...current, seats: {} }));
+					setMenu(null);
+				};
+				const resetTablePosition = () => {
+					updateSettings((current) => ({ ...current, tablePos: null }));
+					setMenu(null);
+				};
+
 				const onGrabDown = (event) => {
 					if (event.button !== undefined && event.button !== 0 && event.pointerType !== "touch") return;
+					if (settings.tableLocked) return;
 					event.preventDefault();
 					event.stopPropagation();
 					const element = event.currentTarget;
@@ -1156,8 +1206,9 @@
 					window.addEventListener("pointercancel", up);
 				};
 
-				return h("div", {
-					className: `konp-table${dragging ? " is-drag" : ""}`,
+				return h(React.Fragment, null,
+				h("div", {
+					className: `konp-table${dragging ? " is-drag" : ""}${settings.tableLocked ? " is-locked" : ""}`,
 					style: {
 						width: `${width}px`,
 						height: `${height}px`,
@@ -1166,12 +1217,23 @@
 						transform: `translate3d(${tablePos.x}px, ${tablePos.y}px, 0)`,
 					},
 					"aria-hidden": failed ? "true" : undefined,
+					role: "region",
+					tabIndex: 0,
+					"aria-label": "K-ON! 茶桌：右键打开茶桌菜单",
+					onContextMenu: openMenu,
+					onKeyDown: (event) => {
+						if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+							event.preventDefault();
+							const box = event.currentTarget.getBoundingClientRect();
+							openMenu({ clientX: box.left + box.width / 2, clientY: box.top + box.height / 2, preventDefault() {}, stopPropagation() {} });
+						}
+					},
 				},
 					h("canvas", { ref: backRef, width: TABLE.width, height: TABLE.height, className: "konp-table-canvas konp-table-back", style: { position: "absolute", inset: 0, width: "100%", height: "100%", zIndex: 0, pointerEvents: "none" } }),
 					h("div", {
 						ref: grabRef,
 						className: "konp-table-grab",
-						style: { position: "absolute", left: 0, right: 0, zIndex: 1, pointerEvents: "auto", top: `${TABLE.charHeight * scale}px`, height: `${(TABLE.height - TABLE.charHeight) * scale}px` },
+						style: { position: "absolute", inset: 0, zIndex: 1, pointerEvents: "auto", cursor: settings.tableLocked ? "default" : "grab" },
 						onPointerDown: onGrabDown,
 						onPointerMove: onGrabMove,
 						onPointerUp: onGrabUp,
@@ -1213,6 +1275,27 @@
 						},
 					}) : null,
 					failed ? h("div", { className: "konp-fallback" }, "桌子素材加载失败") : null,
+				),
+				menu ? h("div", {
+					ref: menuRef,
+					className: "konp-menu konp-table-menu",
+					style: { left: menu.left, top: menu.top },
+					role: "dialog",
+					"aria-label": "茶桌设置",
+					onPointerDown: (event) => event.stopPropagation(),
+					onContextMenu: (event) => event.preventDefault(),
+				},
+					h("div", { className: "konp-menu-head" },
+						h("span", null, "茶桌"),
+						h("button", { className: "konp-x", type: "button", "aria-label": "关闭", onClick: () => setMenu(null) }, "×"),
+					),
+					h("div", { className: "konp-menu-name" }, "轻音部茶桌"),
+					h("button", { className: "konp-hide", type: "button", onClick: toggleLock }, settings.tableLocked ? "取消固定位置" : "固定桌子位置"),
+					h("button", { className: "konp-hide", type: "button", onClick: seatAll }, "全部角色入座"),
+					h("button", { className: "konp-hide", type: "button", onClick: unseatAll }, "全部角色离座"),
+					h("button", { className: "konp-hide", type: "button", onClick: resetTablePosition }, "恢复默认位置"),
+					h("p", { className: "konp-tip" }, "角色拖到桌子区域即入座；从座位拖出离座。"),
+				) : null,
 				);
 			}
 
@@ -1248,14 +1331,17 @@
 				const onDropSeat = (id, position) => {
 					if (!settings.table) return false;
 					const size = CELL * settings.scale;
-					const seat = Core.tableSeatAt(
+					// Dropping anywhere on the table seats the actor in its own fixed
+					// chair; a small margin makes the visible tabletop/legs forgiving.
+					const onTable = tableContainsPoint(
 						position.x + size / 2,
 						position.y + size / 2,
 						tableRef.current.x,
 						tableRef.current.y,
 						settings.scale,
+						24 * settings.scale,
 					);
-					if (!seat || seat.id !== id) return false;
+					if (!onTable) return false;
 					updateSettings((current) => ({
 						...current,
 						seats: { ...current.seats, [id]: true },
@@ -1312,6 +1398,7 @@
 						})),
 						onUnseat,
 						onSeatDrop,
+						updateSettings,
 					}) : null,
 					standing.map((member) => h(PetActor, {
 						key: member.id,
