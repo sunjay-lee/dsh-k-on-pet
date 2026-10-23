@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dsh-k-on-pet harness</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background:
+      radial-gradient(1200px 600px at 80% 110%, #f3e8f7 0%, transparent 60%),
+      linear-gradient(160deg, #fbfbfd 0%, #f2f4f9 100%);
+    overflow: hidden;
+  }
+  .demo-card {
+    position: absolute; left: 34px; top: 30px; max-width: 430px;
+    padding: 18px 20px; border-radius: 16px; background: rgba(255,255,255,.72);
+    border: 1px solid rgba(40,30,60,.08); box-shadow: 0 10px 30px rgba(40,30,60,.06);
+    color: #4a4352;
+  }
+  .demo-card h1 { margin: 0 0 6px; font-size: 16px; font-weight: 600; letter-spacing: .01em; }
+  .demo-card p { margin: 0; font-size: 12px; line-height: 1.7; color: #7c7385; }
+  .demo-card kbd {
+    font: inherit; font-size: 11px; padding: 1px 5px; border-radius: 5px;
+    border: 1px solid rgba(40,30,60,.16); background: rgba(255,255,255,.8);
+  }
+  #status { position: absolute; left: 36px; bottom: 26px; font-size: 11px; color: #9a91a2; }
+</style>
+</head>
+<body>
+  <section class="demo-card">
+    <h1>K-ON! 桌宠 · 本地渲染测试</h1>
+    <p>
+      这是不启动 DSH 的静态 harness：下面这只宠物由真实的
+      <code>lib/client.js</code> 挂载。拖动它、单击、双击、右键，或点右上角齿轮。
+    </p>
+  </section>
+  <div id="status">booting…</div>
+  <div id="root"></div>
+
+  <script src="/__test/react.js"></script>
+  <script src="/__test/react-dom.js"></script>
+  <script>
+    window.__errors = [];
+    window.addEventListener("error", (event) => window.__errors.push(String(event.message || event.error)));
+    window.addEventListener("unhandledrejection", (event) => window.__errors.push(String(event.reason)));
+
+    window.__registered = null;
+    window.__injected = null;
+    window.__ModuleLoader__ = {
+      load({ id, factory }) {
+        const req = (name) => {
+          if (name === "react") return window.React;
+          if (name === "react-dom") return window.ReactDOM;
+          if (name === "react/jsx-runtime") return { jsx: window.React.createElement, jsxs: window.React.createElement, Fragment: window.React.Fragment };
+          throw new Error("harness: unknown module " + name);
+        };
+        window.__plugin = factory(req);
+        window.__pluginId = id;
+      },
+    };
+  </script>
+  <script src="/plugins/client.js"></script>
+  <script>
+    (() => {
+      const status = document.getElementById("status");
+      try {
+        if (!window.__plugin) throw new Error("client.js 没有注册插件");
+        const ctx = {
+          effect(fn) { return fn(); },
+          slots: {
+            inject(name, generator) {
+              const iterator = generator();
+              const first = iterator.next();
+              window.__injected = { name, first: first.value };
+            },
+            register(options, component) {
+              window.__registered = { options, component };
+              return { dispose() {} };
+            },
+          },
+        };
+        window.__plugin.apply(ctx);
+        if (!window.__registered) throw new Error("插件没有注册 shell.overlay");
+        window.__pluginName = window.__plugin.name;
+        window.__pluginInject = window.__plugin.inject;
+        ReactDOM.createRoot(document.getElementById("root")).render(
+          React.createElement(window.__registered.component)
+        );
+        status.textContent = "harness ready · " + window.__plugin.name + " → " + window.__registered.options.name;
+        requestAnimationFrame(() => { window.__ready = true; });
+      } catch (error) {
+        status.textContent = "harness failed: " + (error && error.stack || error);
+        window.__ready = false;
+        window.__errors.push(String(error));
+      }
+    })();
+  </script>
+</body>
+</html>
