@@ -164,7 +164,7 @@ CHROME=/usr/bin/chromium node scripts/smoke.mjs
 python3 scripts/build-meta.py
 ```
 
-`smoke.mjs` 会起一个本地静态服务器，加载 `test/harness.html`，用 CDP 检查：浮层挂载、canvas 有像素、点击出气泡、拖动改变位置、右键菜单出现、菜单切换角色、静音生效、刷新后设置保留。
+`smoke.mjs` 会起一个本地静态服务器，加载 `test/harness.html`，用 CDP 检查：浮层挂载、canvas 有像素、点击出气泡、拖动改变位置、右键菜单出现、菜单切换角色、静音生效、刷新后设置保留。harness 使用 `test/vendor/` 里内置的 React 18 UMD，不需要 `npm install`，也不访问网络。
 
 ### 重新生成资产
 

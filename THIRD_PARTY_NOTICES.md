@@ -39,6 +39,13 @@ Kakifly / 芳文社 / 京都动画及各自权利方所有。本项目是**非�
 | `@deepseek-ai/cordis` | MIT | 插件上下文类型 |
 | `react` / `react-dom` | MIT | 客户端浮层渲染（由 DSH 提供） |
 
+### 测试夹具中的 React UMD
+
+`test/vendor/react.production.min.js` 与 `test/vendor/react-dom.production.min.js` 是
+React / ReactDOM 18.3.1 的 UMD 生产构建，版权归 Meta Platforms, Inc. 及其关联方，
+以 MIT 授权。它们只被 `test/harness.html` 和 `scripts/smoke.mjs` 使用，不进入插件运行时；
+版本、来源与 SHA-256 见 `test/vendor/README.md`。
+
 ## 4. 实现参考
 
 槽位注册与 profile bundle 的写法参考了 DSH 自带客户端插件以及已安装的 `dsh-pet` 的公开 API 用法；

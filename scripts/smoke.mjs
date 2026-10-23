@@ -33,8 +33,8 @@ function resolveRequest(urlPath) {
 	const clean = decodeURIComponent(urlPath.split("?")[0]);
 	if (clean === "/" || clean === "/test/harness.html") return join(root, "test/harness.html");
 	if (clean === "/plugins/client.js") return join(root, "lib/client.js");
-	if (clean === "/__test/react.js") return join(root, ".work/test/node_modules/react/umd/react.development.js");
-	if (clean === "/__test/react-dom.js") return join(root, ".work/test/node_modules/react-dom/umd/react-dom.development.js");
+	if (clean === "/test/vendor/react.production.min.js") return join(root, "test/vendor/react.production.min.js");
+	if (clean === "/test/vendor/react-dom.production.min.js") return join(root, "test/vendor/react-dom.production.min.js");
 	if (clean.startsWith("/dsh-k-on-pet/")) return join(root, "assets", clean.slice("/dsh-k-on-pet/".length));
 	return null;
 }
@@ -291,8 +291,6 @@ try {
 	await writeFile(join(root, "docs/preview.png"), Buffer.from(shot.data, "base64"));
 	console.log("  ✓ 已生成 docs/preview.png");
 
-	const full = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true });
-	await writeFile(join(root, "docs/preview-wide.png"), Buffer.from(full.data, "base64"));
 } catch (error) {
 	failures.push(error.message);
 } finally {
