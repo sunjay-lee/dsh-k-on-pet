@@ -90,8 +90,28 @@ def decode_el(path):
         for x in range(W):
             v = buf[y * W + x]; a = alpha[y * W + x] if y * W + x < len(alpha) else 255
             px[x, y] = ((v >> 16) & 255, (v >> 8) & 255, v & 255, a)
-    # EL scanlines are stored bottom-up; flip once here so the atlas is upright.
-    return img.transpose(Image.FLIP_TOP_BOTTOM)
+    # EL scanlines are stored bottom-up: flip the atlas, then restore the
+    # original top-to-bottom row-band order (frames were authored that way).
+    img = img.transpose(Image.FLIP_TOP_BOTTOM)
+    ordered = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    for y in range(0, img.height, 96):
+        ordered.paste(img.crop((0, img.height - 96 - y, img.width, img.height - y)), (0, y))
+    img = ordered
+    # The wide sheets (672px) use 112x96 cells; the others use 96x96.  Every
+    # character has 6 columns.  Normalize to 96x96 by center-cropping the
+    # 8px side padding, so the runtime can keep one square cell size.
+    columns = 6
+    raw_w = W // columns
+    if raw_w == 96:
+        return img
+    out = Image.new('RGBA', (columns * 96, H), (0, 0, 0, 0))
+    offset = (raw_w - 96) // 2
+    for row in range(H // 96):
+        for col in range(columns):
+            cell = img.crop((col * raw_w + offset, row * 96,
+                             col * raw_w + offset + 96, row * 96 + 96))
+            out.alpha_composite(cell, (col * 96, row * 96))
+    return out
 
 def main():
     ap = argparse.ArgumentParser()
@@ -109,13 +129,14 @@ def main():
         dest.mkdir(parents=True, exist_ok=True)
         img.save(dest / 'sheet.png')
         W, H = img.size
+        columns = 6
         cells = []
         for y in range(H // 96):
-            for x in range(W // 96):
+            for x in range(columns):
                 cell = img.crop((x * 96, y * 96, x * 96 + 96, y * 96 + 96))
-                cells.append({'index': y * (W // 96) + x, 'bbox': cell.getbbox()})
+                cells.append({'index': y * columns + x, 'bbox': cell.getbbox()})
         (dest / 'meta.json').write_text(json.dumps(
-            {'sheet': {'width': W, 'height': H, 'cell': 96, 'columns': W // 96,
+            {'sheet': {'width': W, 'height': H, 'cell': 96, 'columns': columns,
                        'rows': H // 96}, 'cells': cells}, ensure_ascii=False, indent=1))
         print(f'{key}: {W}x{H} -> {dest}')
 

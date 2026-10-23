@@ -345,6 +345,28 @@ try {
 	const stored = await evaluate(`(() => { try { const raw = localStorage.getItem('dsh-k-on-pet:v2'); if (!raw) return null; const data = JSON.parse(raw); return data && data.positions ? Object.keys(data.positions) : null; } catch { return null; } })()`);
 	check(Array.isArray(stored) && stored.length > 0, `拖动后位置写入 localStorage（${JSON.stringify(stored)}）`);
 
+	// ---- 慢速拖拽不触发下落 ----
+	box = await actorBox(0);
+	const startY = box.y;
+	await mouse("mousePressed", box.x + box.width / 2, box.y + box.height / 2);
+	for (let i = 1; i <= 4; i += 1) {
+		await sleep(120);
+		await cdp.send("Input.dispatchMouseEvent", {
+			type: "mouseMoved",
+			x: box.x + box.width / 2,
+			y: box.y + box.height / 2 - i * 40,
+			button: "left",
+			buttons: 1,
+			clickCount: 1,
+		});
+	}
+	await sleep(180);
+	const releasedY = box.y - 160;
+	await mouse("mouseReleased", box.x + box.width / 2, box.y + box.height / 2 - 160);
+	await sleep(900);
+	const slow = await actorBox(0);
+	check(Math.abs(slow.y - releasedY) < 36 && slow.y < startY - 80, `慢速拖拽停在松手位置（${slow.y.toFixed(0)} vs ${releasedY.toFixed(0)}）`);
+
 	// ---- 单个角色回到右下角 ----
 	box = await actorBox(0);
 	await mouse("mousePressed", box.x + box.width / 2, box.y + box.height / 2, "right");
