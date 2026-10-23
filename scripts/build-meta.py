@@ -64,6 +64,10 @@ def build(char_id: str) -> None:
         clips[clip] = picked
     if not clips["idle"]:
         clips["idle"] = clips["idleAlt"] or clips["react"] or [0]
+    # 律的 row2 是“双手交握站着”的动作，不像被抓起；row0 的慌张举手
+    # 更接近抓取反馈。其他角色仍用 row2。
+    if char_id == "ritsu":
+        clips["held"] = clips["react"]
     for clip, picked in clips.items():
         if not picked:
             clips[clip] = clips["idle"]

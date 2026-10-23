@@ -258,6 +258,8 @@ try {
 		return opaque;
 	})()`);
 	check(painted > 800, `立绘已绘制（不透明像素 ${painted}）`);
+	const sheetUrls = await evaluate(`performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.includes('/sheet.png'))`);
+	check(sheetUrls.length > 0 && sheetUrls.every((url) => /[?&]v=[a-f0-9]{12}(?:&|$)/.test(url)), `图集请求带资源版本号（${sheetUrls.join(', ')}）`);
 
 	// ---- 设置页基础 ----
 	const charSwitches = await evaluate(`[...document.querySelectorAll('.konp-settings [role="switch"]')].filter((el) => (el.getAttribute('aria-label') || '').startsWith('显示')).length`);
