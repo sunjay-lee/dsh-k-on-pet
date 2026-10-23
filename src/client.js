@@ -210,16 +210,9 @@
 			const seatGhostCache = new Map();
 			function loadSeatGhost(id) {
 				if (seatGhostCache.has(id)) return seatGhostCache.get(id);
-				const promise = (async () => {
-					const base = `${ASSET_BASE}/characters/${id}`;
-					const metaResponse = await fetch(`${base}/meta.json?v=${ASSET_REV}`, { cache: "no-cache" });
-					if (!metaResponse.ok) throw new Error(`meta ${metaResponse.status}`);
-					const meta = await metaResponse.json();
-					const image = new Image();
-					image.src = `${base}/sheet.png?v=${ASSET_REV}`;
-					await image.decode();
-					return { meta, image };
-				})().catch((error) => {
+				const image = new Image();
+				image.src = `${ASSET_BASE}/table/${id}-frames.png?v=${ASSET_REV}`;
+				const promise = image.decode().then(() => image).catch((error) => {
 					seatGhostCache.delete(id);
 					throw error;
 				});
@@ -227,38 +220,24 @@
 				return promise;
 			}
 
+			// 从座位拖出时显示与座位一致的坐姿帧，保持 4x2 图集里的原始长宽比。
 			function SeatGhost({ id, x, y, width, height }) {
 				const canvasRef = useRef(null);
-				const [asset, setAsset] = useState(null);
+				const [image, setImage] = useState(null);
 				useEffect(() => {
 					let active = true;
-					loadSeatGhost(id).then((value) => { if (active) setAsset(value); }).catch(() => {});
+					loadSeatGhost(id).then((value) => { if (active) setImage(value); }).catch(() => {});
 					return () => { active = false; };
 				}, [id]);
 				useEffect(() => {
 					const canvas = canvasRef.current;
-					if (!canvas || !asset) return undefined;
+					if (!canvas || !image) return;
+					const w = TABLE.widths[id] || TABLE.charWidth;
 					const ctx = canvas.getContext("2d");
-					const frames = asset.meta.clips.held && asset.meta.clips.held.length ? asset.meta.clips.held : asset.meta.clips.idle;
-					let frame = 0;
-					let acc = 0;
-					const draw = () => {
-						const rect = Core.frameRect(frames[frame % frames.length], asset.meta.sheet.columns);
-						ctx.clearRect(0, 0, CELL, CELL);
-						ctx.drawImage(asset.image, rect.sx, rect.sy, rect.size, rect.size, 0, 0, CELL, CELL);
-					};
-					draw();
-					const stop = addTicker((dt) => {
-						acc += dt;
-						const interval = 1 / Math.max(1, CLIP_FPS.held || 8);
-						if (acc < interval) return;
-						acc = 0;
-						frame += 1;
-						draw();
-					});
-					return stop;
-				}, [asset]);
-				if (!asset) {
+					ctx.clearRect(0, 0, w, TABLE.charHeight);
+					ctx.drawImage(image, 0, 0, w, TABLE.charHeight, 0, 0, w, TABLE.charHeight);
+				}, [image, id]);
+				if (!image) {
 					return h("img", {
 						className: "konp-table-ghost",
 						src: `${ASSET_BASE}/table/${id}.png?v=${ASSET_REV}`,
@@ -267,10 +246,11 @@
 						style: { left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${height}px` },
 					});
 				}
+				const w = TABLE.widths[id] || TABLE.charWidth;
 				return h("canvas", {
 					ref: canvasRef,
-					width: CELL,
-					height: CELL,
+					width: w,
+					height: TABLE.charHeight,
 					className: "konp-table-ghost",
 					style: {
 						position: "fixed",
@@ -295,6 +275,12 @@
 					className: `konp-switch${checked ? " is-on" : ""}`,
 					onClick: onChange,
 				}, h("i"));
+			}
+
+			function styleElement() {
+				// 设置分区第一次挂载时，head 里的样式可能还没生效；把同一份 CSS
+				// 放进组件树，保证首屏就是最终样式（light DOM / shadow DOM 都适用）。
+				return h("style", { "data-konp-style": "inline", dangerouslySetInnerHTML: { __html: CSS } });
 			}
 
 			function KOnPetSettings() {
@@ -347,6 +333,7 @@
 				}));
 
 				return h("div", { className: "konp-settings" },
+					styleElement(),
 					h("h2", null, "K-ON! 桌宠"),
 					h("p", { className: "konp-set-sub" }, "把《轻音少女》的角色请到界面上。设置保存在当前浏览器，每个角色有独立位置。"),
 					h("section", { className: "konp-set-card" },
@@ -1110,6 +1097,85 @@
 				);
 			}
 
+			const TABLE_ANIM = {
+				yui: [0, 1, 2, 3, 4, 5, 6, 7],
+				ritsu: [0, 1, 2, 3, 4, 5, 6, 7],
+				tsumugi: [0, 1, 2, 3, 4, 5, 6, 7],
+			};
+
+			const tableFramesCache = new Map();
+			function loadTableFrames(id) {
+				if (tableFramesCache.has(id)) return tableFramesCache.get(id);
+				const image = new Image();
+				image.src = `${ASSET_BASE}/table/${id}-frames.png?v=${ASSET_REV}`;
+				const promise = image.decode().then(() => image).catch((error) => {
+					tableFramesCache.delete(id);
+					throw error;
+				});
+				tableFramesCache.set(id, promise);
+				return promise;
+			}
+
+			// 入座立绘：中间三人按 4x2 帧表循环播放，两侧两人保持静态。
+			function TableSeatSprite({ id, animated, style, onPointerDown }) {
+				const canvasRef = useRef(null);
+				const [image, setImage] = useState(null);
+				useEffect(() => {
+					if (!animated) return undefined;
+					let active = true;
+					loadTableFrames(id).then((value) => { if (active) setImage(value); }).catch(() => {});
+					return () => { active = false; };
+				}, [id, animated]);
+				useEffect(() => {
+					const canvas = canvasRef.current;
+					if (!canvas || !image) return undefined;
+					const ctx = canvas.getContext("2d");
+					const frames = TABLE_ANIM[id] || [0];
+					let frame = 0;
+					let acc = 0;
+					const draw = () => {
+						const index = frames[frame % frames.length];
+						const w = TABLE.widths[id] || TABLE.charWidth;
+						const sx = (index % 4) * w;
+						const sy = Math.floor(index / 4) * TABLE.charHeight;
+						ctx.clearRect(0, 0, w, TABLE.charHeight);
+						ctx.drawImage(image, sx, sy, w, TABLE.charHeight, 0, 0, w, TABLE.charHeight);
+					};
+					draw();
+					const stop = addTicker((dt) => {
+						if (window.document.hidden) return;
+						acc += dt;
+						const interval = 1 / Math.max(1, TABLE.fps);
+						if (acc < interval) return;
+						acc %= interval;
+						frame += 1;
+						draw();
+					});
+					return stop;
+				}, [image, id]);
+				if (animated && image) {
+					const w = TABLE.widths[id] || TABLE.charWidth;
+					return h("canvas", {
+						ref: canvasRef,
+						width: w,
+						height: TABLE.charHeight,
+						className: "konp-table-seat",
+						"data-char": id,
+						style,
+						onPointerDown,
+					});
+				}
+				return h("img", {
+					className: "konp-table-seat",
+					"data-char": id,
+					src: `${ASSET_BASE}/table/${id}.png?v=${ASSET_REV}`,
+					alt: "",
+					draggable: false,
+					style,
+					onPointerDown,
+				});
+			}
+
 			function TableScene({ settings, tablePos, onTableMove, onTableCommit, onSeatDrop, updateSettings }) {
 				const scale = settings.scale;
 				const width = TABLE.width * scale;
@@ -1261,7 +1327,7 @@
 						offsetX: event.clientX - box.left,
 						offsetY: event.clientY - box.top,
 						moved: false,
-						width: TABLE.charWidth * scale,
+						width: (TABLE.widths[seat.id] || TABLE.charWidth) * scale,
 						height: TABLE.charHeight * scale,
 					};
 					seatDrag.current = drag;
@@ -1338,19 +1404,17 @@
 					}),
 					TABLE.seats.map((seat) => {
 						if (!settings.visible[seat.id] || !settings.seats[seat.id] || draggingSeat === seat.id) return null;
-						return h("img", {
+						return h(TableSeatSprite, {
 							key: seat.id,
-							className: "konp-table-seat",
-							src: `${ASSET_BASE}/table/${seat.id}.png?v=${ASSET_REV}`,
-							alt: "",
-							draggable: false,
+							id: seat.id,
+							animated: Boolean(TABLE_ANIM[seat.id]),
 							style: {
 								position: "absolute",
 								zIndex: 2,
 								pointerEvents: "auto",
 								left: `${seat.x * scale}px`,
 								top: `${TABLE.charTop * scale}px`,
-								width: `${TABLE.charWidth * scale}px`,
+								width: `${(TABLE.widths[seat.id] || TABLE.charWidth) * scale}px`,
 								height: `${TABLE.charHeight * scale}px`,
 								transform: seat.mirror ? "scaleX(-1)" : undefined,
 							},
@@ -1364,7 +1428,7 @@
 					id: ghost.id,
 					x: ghost.x,
 					y: ghost.y,
-					width: TABLE.charWidth * scale,
+					width: (TABLE.widths[ghost.id] || TABLE.charWidth) * scale,
 					height: TABLE.charHeight * scale,
 				}) : null,
 				menu ? h("div", {
@@ -1461,6 +1525,7 @@
 				};
 
 				return h("div", { className: "konp-root" },
+					styleElement(),
 					settings.table ? h(TableScene, {
 						settings,
 						tablePos,

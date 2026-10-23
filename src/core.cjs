@@ -27,7 +27,8 @@
 		height: 160,
 		charWidth: 64,
 		charHeight: 128,
-		charTop: 20,
+		charTop: 8,
+		widths: { yui: 64, mio: 64, ritsu: 80, tsumugi: 64, azusa: 64 },
 		frames: 4,
 		fps: 4,
 		seats: [
@@ -210,7 +211,7 @@
 		return {
 			x: tableX + seat.x * scale,
 			y: tableY + TABLE.charTop * scale,
-			w: TABLE.charWidth * scale,
+			w: (TABLE.widths[seat.id] || TABLE.charWidth) * scale,
 			h: TABLE.charHeight * scale,
 		};
 	}

@@ -1,88 +1,88 @@
 {
-	"name": "dsh-k-on-pet",
-	"version": "0.5.1",
-	"description": "K-ON! 轻音少女桌面宠物：把平泽唯、秋山澪、田井中律、琴吹䌷、中野梓挂进 DeepSeek Harness 的 Web 界面。",
-	"type": "module",
-	"main": "lib/index.js",
-	"types": "lib/types/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./lib/types/index.d.ts",
-			"default": "./lib/index.js"
-		},
-		"./client": {
-			"types": "./lib/types/client/index.d.ts",
-			"default": "./lib/client.js"
-		},
-		"./cordis.patch.yml": "./cordis.patch.yml",
-		"./package.json": "./package.json"
-	},
-	"files": [
-		"lib",
-		"src",
-		"assets",
-		"docs",
-		"cordis.patch.yml",
-		"README.md",
-		"LICENSE",
-		"THIRD_PARTY_NOTICES.md",
-		"scripts",
-		"test"
-	],
-	"dsh": {
-		"bundle": {
-			"patch": "./cordis.patch.yml"
-		},
-		"compatibility": {
-			"dshReleases": {
-				"0.1.7-rc.2": "incompatible",
-				"0.2.0-rc.1": "compatible",
-				"0.2.0-rc.2": "compatible",
-				"0.2.1-rc.2": "compatible"
-			}
-		},
-		"client": {
-			"inject": [
-				"@deepseek-ai/dsh-client-ui-layout"
-			],
-			"platform": "web"
-		}
-	},
-	"peerDependencies": {
-		"@deepseek-ai/cordis": "^4.0.4",
-		"@deepseek-ai/dsh-client-ui-layout": "^0.2.0-rc.1",
-		"@deepseek-ai/dsh-host-webserver": "^0.2.0-rc.1",
-		"react": "^18.2.0"
-	},
-	"scripts": {
-		"build": "node scripts/build-client.mjs",
-		"check": "node scripts/check.mjs",
-		"build:meta": "python3 scripts/build-meta.py",
-		"test:unit": "node --test test/core.test.mjs",
-		"test": "npm run build && node scripts/check.mjs && node --test test/core.test.mjs && node scripts/smoke.mjs",
-		"prepublishOnly": "npm run build && node scripts/check.mjs && npm run test:unit"
-	},
-	"keywords": [
-		"dsh",
-		"dsh-plugin",
-		"deepseek-harness",
-		"k-on",
-		"desktop-pet",
-		"mascot",
-		"web"
-	],
-	"engines": {
-		"node": ">=20"
-	},
-	"license": "MIT",
-	"author": "dsh-k-on-pet contributors",
-	"icon": "assets/icon.png",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/sunjay-lee/dsh-k-on-pet.git"
-	},
-	"homepage": "https://github.com/sunjay-lee/dsh-k-on-pet#readme",
-	"bugs": {
-		"url": "https://github.com/sunjay-lee/dsh-k-on-pet/issues"
-	}
+  "name": "dsh-k-on-pet",
+  "version": "0.5.2",
+  "description": "K-ON! 轻音少女桌面宠物：把平泽唯、秋山澪、田井中律、琴吹䌷、中野梓挂进 DeepSeek Harness 的 Web 界面。",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "assets",
+    "docs",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "scripts",
+    "test"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.1.7-rc.2": "incompatible",
+        "0.2.0-rc.1": "compatible",
+        "0.2.0-rc.2": "compatible",
+        "0.2.1-rc.2": "compatible"
+      }
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh-client-ui-layout": "^0.2.0-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "^0.2.0-rc.1",
+    "react": "^18.2.0"
+  },
+  "scripts": {
+    "build": "node scripts/build-client.mjs",
+    "check": "node scripts/check.mjs",
+    "build:meta": "python3 scripts/build-meta.py",
+    "test:unit": "node --test test/core.test.mjs",
+    "test": "npm run build && node scripts/check.mjs && node --test test/core.test.mjs && node scripts/smoke.mjs",
+    "prepublishOnly": "npm run build && node scripts/check.mjs && npm run test:unit"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "k-on",
+    "desktop-pet",
+    "mascot",
+    "web"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "author": "dsh-k-on-pet contributors",
+  "icon": "assets/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sunjay-lee/dsh-k-on-pet.git"
+  },
+  "homepage": "https://github.com/sunjay-lee/dsh-k-on-pet#readme",
+  "bugs": {
+    "url": "https://github.com/sunjay-lee/dsh-k-on-pet/issues"
+  }
 }

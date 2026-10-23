@@ -267,7 +267,7 @@ try {
 	await sleep(120);
 	await mouse("mouseReleased", seatPoint.x, seatPoint.y);
 	await waitUntil("!!document.querySelector('.konp-table-seat') && document.querySelectorAll('.konp-canvas').length === 0", 3000, "入座");
-	check(await evaluate("document.querySelector('.konp-table-seat').getAttribute('src').includes('/yui.png')"), "平泽唯拖到座位后切换为坐姿");
+	check(await evaluate("document.querySelector('.konp-table-seat').getAttribute('data-char') === 'yui'"), "平泽唯拖到座位后切换为坐姿");
 	const seatedBox = await evaluate("(() => { const r = document.querySelector('.konp-table-seat').getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:r.height }; })()");
 	await mouse("mousePressed", seatedBox.x + seatedBox.width / 2, seatedBox.y + seatedBox.height / 2);
 	await sleep(120);
