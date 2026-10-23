@@ -254,11 +254,11 @@ python3 scripts/build-meta.py
 
 **代码**以 MIT 发布。
 
-**图像与语音**来自原版 Windows 桌宠 `k-on-pet`（`MascotTable.exe` 与五个 `Mascot*.exe` 的资源包），版权归原作者及《K-ON!》相关权利方所有。原分发中没有找到明确的再分发许可；本仓库将其作为**同人 / 个人使用**的移植示例一并提供，**不随 MIT 授权**。如果你要商用或再分发，请自行取得授权。
+**图像、语音、茶桌素材与插件图标**来自原版 Windows 桌宠 `k-on-pet`（`MascotTable.exe` 与五个 `Mascot*.exe` 的资源包，以及 `main.sd` 中的茶桌座位数据），版权归原作者及《K-ON!》相关权利方所有。原分发中没有找到明确的再分发许可；本仓库将其作为**同人 / 个人使用**的移植示例一并提供，**不随 MIT 授权**。`assets/table/*`、`assets/icon.png` 和 `docs/*.png` 中的角色画面同样不属于 MIT。如果你要商用或再分发，请自行取得授权。
 
 若权利方要求，维护者会删除相应资产或整包。详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## License
 
 - 代码：MIT，见 [LICENSE](LICENSE)。
-- 角色图像、语音、名称：不属于 MIT，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- 角色图像、语音、名称、茶桌素材、插件图标、截图画面：不属于 MIT，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
