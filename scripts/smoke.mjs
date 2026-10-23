@@ -264,6 +264,7 @@ try {
 	check(charSwitches === 5, `设置页列出 5 个角色开关（实际 ${charSwitches}）`);
 	check(await evaluate("document.querySelectorAll('.konp-settings .konp-set-row').length >= 8"), "设置页包含角色、大小、语音、闲聊、关怀等条目");
 	check(await evaluate("document.querySelector('.konp-settings .konp-set-thumb') && getComputedStyle(document.querySelector('.konp-settings .konp-set-thumb')).backgroundImage.includes('sheet.png')"), "设置页角色缩略图使用原版 sheet");
+	check(await evaluate("[...document.querySelectorAll('.konp-set-btn')].filter((b) => ['导出设置', '导入设置'].includes(b.textContent.trim())).length === 2"), "设置页提供导入 / 导出按钮");
 
 	// ---- 单击 / 双击 ----
 	let box = await actorBox();
@@ -290,7 +291,7 @@ try {
 	await mouse("mouseReleased", box.x + box.width / 2, box.y + box.height / 2, "right");
 	await waitUntil("!!document.querySelector('.konp-menu')", 3000, "右键菜单");
 	check(await evaluate("document.querySelector('.konp-hide') && document.querySelector('.konp-hide').textContent.includes('隐藏')"), "右键菜单提供「隐藏这只」");
-	await clickButton("隐藏平泽唯");
+	await evaluate("(() => { const b = [...document.querySelectorAll('.konp-hide')][0]; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); b.click(); })()");
 	await waitUntil("document.querySelectorAll('.konp-canvas').length === 0", 3000, "隐藏后无角色");
 	check(await evaluate("document.querySelector('.konp-settings [aria-label=\"显示平泽唯\"]').getAttribute('aria-checked') === 'false'"), "隐藏后设置项同步关闭");
 
@@ -339,6 +340,8 @@ try {
 	await sleep(900);
 	box = await actorBox(0);
 	check(Math.abs(box.x - before.x) > 40 || Math.abs(box.y - before.y) > 30, `拖拽生效（${before.x.toFixed(0)},${before.y.toFixed(0)} → ${box.x.toFixed(0)},${box.y.toFixed(0)}）`);
+	const rotate = await evaluate("document.querySelector('.konp-actor').style.rotate || '0deg'");
+	check(Math.abs(parseFloat(rotate) || 0) < 0.01, `落地后旋转归零（${rotate}）`);
 	const stored = await evaluate(`(() => { try { const raw = localStorage.getItem('dsh-k-on-pet:v2'); if (!raw) return null; const data = JSON.parse(raw); return data && data.positions ? Object.keys(data.positions) : null; } catch { return null; } })()`);
 	check(Array.isArray(stored) && stored.length > 0, `拖动后位置写入 localStorage（${JSON.stringify(stored)}）`);
 

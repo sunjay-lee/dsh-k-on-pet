@@ -40,11 +40,32 @@
 - **随机闲聊**：每 2.5–5 分钟说一句。
 - **关怀提醒**：每 50 分钟提醒喝水 / 起身 / 看远处。
 - **角色设置**：DSH **设置 → K-ON! 桌宠** 里独立开关五位角色，可同时显示；支持全部显示 / 全部隐藏。
-- **外观与行为**：统一大小（0.8–2.0×）、语音、随机闲聊、关怀提醒，以及一键恢复默认。
+- **外观与行为**：统一大小（1.0–2.4×）、语音、随机闲聊、关怀提醒，以及一键恢复默认。
 - **右键菜单**：隐藏这只、把这只重置回右下角。菜单是页面内浮层，不依赖浏览器弹窗。
 - **记忆**：可见角色、大小、语音/闲聊/关怀开关、每个角色各自的坐标，存在浏览器 `localStorage`，刷新后恢复。
 - **不挡操作**：只有宠物本体接收指针事件，其余区域点击穿透。
 - **无网络、无模型调用**：不请求外部接口，不上传任何数据。
+
+## 设置
+
+打开 **DSH 设置 → K-ON! 桌宠**：
+
+<sub>设置页（本地夹具渲染）：</sub>
+
+<img src="docs/settings.png" width="560" alt="K-ON! 桌宠设置页" />
+
+| 项 | 说明 | 默认 |
+| --- | --- | --- |
+| 角色开关 | 五位角色各自独立，可同时显示 | 仅平泽唯 |
+| 全部显示 / 全部隐藏 | 一次切换所有角色 | — |
+| 大小 | 统一缩放，范围 1.0–2.4× | 1.5× |
+| 语音 | 点击 / 双击时播放原版语音 | 开 |
+| 随机闲聊 | 待机时每 2.5–5 分钟说一句 | 开 |
+| 关怀提醒 | 每 50 分钟提醒喝水 / 休息 | 开 |
+| 导出 / 导入 | 把偏好导出为 JSON，或从备份恢复 | — |
+| 恢复默认 | 回到仅唯、1.5×、右下角 | — |
+
+每个角色有独立坐标：第一次显示时按当前可见数量依次排开，之后拖动到哪里就记住哪里。设置页和宠物右键菜单读写同一份偏好。
 
 ## 安装
 
@@ -114,9 +135,18 @@ curl -s http://127.0.0.1:3080/dsh-k-on-pet/characters/yui/meta.json | head
 | 右键 / 悬停右上角齿轮 | 宠物菜单 |
 | 菜单「隐藏这只」 | 关闭该角色，可在 DSH 设置里重新打开 |
 | 菜单「回到右下角」 | 清除该角色的位置记忆 |
-| DSH 设置 → K-ON! 桌宠 | 角色显隐、大小、语音、闲聊、关怀、恢复默认 |
+| DSH 设置 → K-ON! 桌宠 | 角色显隐、大小、语音、闲聊、关怀、导入导出、恢复默认 |
 
-所有设置只保存在当前浏览器。换浏览器或清空站点数据会恢复默认（仅唯、1.5×、右下角）。DSH 设置页和宠物右键菜单读写的是同一份偏好。
+所有设置只保存在当前浏览器。换浏览器或清空站点数据会恢复默认（仅唯、1.5×、右下角）；需要迁移时用设置页的导出 / 导入。DSH 设置页和宠物右键菜单读写的是同一份偏好。
+
+## 备份与设置迁移
+
+设置保存在当前浏览器的 `localStorage`：
+
+- 当前版本：`dsh-k-on-pet:v2`
+- 旧版单角色设置：`dsh-k-on-pet:v1`，首次读取时自动迁移到 v2
+
+换浏览器、清空站点数据或换设备时，可以在设置页先**导出设置**，在新环境里**导入设置**。导入会覆盖当前偏好；JSON 里只有角色显隐、大小、声音/闲聊/关怀开关和坐标，不包含任何账号或会话数据。
 
 ## 隐私与权限
 
@@ -140,31 +170,45 @@ curl -s http://127.0.0.1:3080/dsh-k-on-pet/characters/yui/meta.json | head
 
 ```text
 dsh-k-on-pet/
-├── package.json          # DSH bundle patch + 客户端注入声明
+├── package.json          # DSH bundle patch + 客户端注入声明 + 市场图标
 ├── cordis.patch.yml      # 把一个客户端插件挂进 web profile
+├── src/
+│   ├── core.cjs          # 纯逻辑：设置归一化、迁移、布局、物理、帧推进
+│   └── client.js         # 浏览器半源码：React 浮层 + Canvas + WebAudio + 交互
 ├── lib/
 │   ├── index.js          # 宿主半：只读静态资源路由
-│   ├── client.js         # 浏览器半：React 浮层 + Canvas + WebAudio + 状态机
+│   ├── client.js         # 由 build-client.mjs 生成的自包含浏览器模块
 │   └── types/            # 类型声明
-├── assets/characters/    # 5 个角色：sheet.png / meta.json / voices/*.mp3
+├── assets/
+│   ├── icon.png          # 插件市场图标
+│   └── characters/       # 5 个角色：sheet.png / meta.json / voices/*.mp3
 ├── docs/                 # README 截图
 ├── scripts/
+│   ├── build-client.mjs  # 把 core.cjs 内联进 lib/client.js
 │   ├── check.mjs         # 静态自检（包结构、资产、meta 一致性）
 │   ├── build-meta.py     # 从 sheet.png 重建 bbox 与动作分组
 │   ├── extract-el.py     # 从原版 .el 解码图集（需要原程序资产）
 │   └── smoke.mjs         # 无头 Chrome 冒烟测试
-└── test/harness.html     # 脱离 DSH 的最小渲染夹具
+├── test/
+│   ├── core.test.mjs     # 纯逻辑单元测试（Node 内置 test runner）
+│   └── harness.html      # 脱离 DSH 的最小渲染夹具
+└── .github/workflows/ci.yml
 ```
 
 ## 从源码开发
 
-仓库里 `lib/client.js` 是可直接运行的普通 JS，不需要打包。
+`lib/client.js` 是生成物，源文件在 `src/`。改完源码后先构建：
 
 ```bash
-# 1. 静态检查：包结构、路由、资产、每张图集的帧数与动作
-node scripts/check.mjs
+# 1. 把 core.cjs 内联进浏览器端 bundle
+npm run build
 
-# 2. 浏览器冒烟测试（需要 Chrome / Chromium）
+# 2. 纯逻辑单测 + 静态检查 + 浏览器冒烟测试
+npm test
+
+# 只跑其中一项
+node --test test/core.test.mjs
+node scripts/check.mjs
 node scripts/smoke.mjs
 # 或指定浏览器路径
 CHROME_BIN=/usr/bin/chromium node scripts/smoke.mjs
@@ -173,7 +217,9 @@ CHROME_BIN=/usr/bin/chromium node scripts/smoke.mjs
 python3 scripts/build-meta.py
 ```
 
-`smoke.mjs` 会起一个本地静态服务器，加载 `test/harness.html`，用 CDP 检查：overlay + settings 两个 slot 的注册、canvas 有像素、点击/双击气泡、拖动与位置持久化、右键隐藏、重置位置、多角色同时渲染、大小设置、全部隐藏、设置页计数，并生成 `docs/preview.png` 与 `docs/settings.png`。harness 使用 `test/vendor/` 里内置的 React 18 UMD，不需要 `npm install`，也不访问网络。
+`npm test` 会构建、检查、跑 `test/core.test.mjs` 的 12 项纯逻辑测试，再用 `smoke.mjs` 起本地静态服务器加载 `test/harness.html`，通过 CDP 检查：overlay + settings 两个 slot 的注册、canvas 有像素、点击/双击气泡、拖动与位置持久化、右键隐藏、重置位置、多角色同时渲染、大小设置、全部隐藏、设置页计数，并生成 `docs/preview.png` 与 `docs/settings.png`。harness 使用 `test/vendor/` 里内置的 React 18 UMD，不需要 `npm install`，也不访问网络。
+
+CI 在 `.github/workflows/ci.yml`：Node 22 + Chrome for Testing，执行 `npm test`。
 
 ### 重新生成资产
 
@@ -189,11 +235,12 @@ python3 scripts/build-meta.py
 ## 实现要点
 
 - 通过 `ctx.slots.inject("@deepseek-ai/dsh-client-ui-layout")` 等待 `shell.overlay` 槽位，再 `ctx.slots.register({ name: "shell.overlay" }, KOnPet)` 挂载浮层；同时用 `settings.section` 注册设置页，导航名为 `K-ON! 桌宠`。浮层是 `position:fixed; inset:0; pointer-events:none`，宠物本体单独开启 `pointer-events:auto`。
-- 每个可见角色独立持有 Canvas、动画状态机和位置；设置通过 `useSyncExternalStore` 在 `shell.overlay` 与设置页之间共享，并写入同一个 `localStorage` key。
+- 所有角色共享一个 rAF ticker；每个角色独立持有 Canvas、动画状态机和位置。设置通过 `useSyncExternalStore` 在 `shell.overlay` 与设置页之间共享，并写入同一个 `localStorage` key。
 - 用 `ctx.effect()` 注册宿主路由，响应体直接从安装目录读文件，带正确的 `Content-Type` 与 `Cache-Control`。
 - 精灵图按 96×96 网格切分，`meta.json` 给出每帧 bbox；绘制时只画 bbox 区域，避免透明边影响对位。
 - 语音用 `HTMLAudioElement` 播放，点击后预热；静音直接跳过播放，不创建音频对象。
-- 状态机只有 `idle / react / sleep / held / drag / throw` 几个状态；定时器在卸载时清理，避免多实例叠加。
+- 状态机只有 `idle / react / sleep / held / drag / throw` 几个状态；物理、帧推进、设置归一化都在 `src/core.cjs` 里，Node 单测可直接覆盖。
+- 尊重 `prefers-reduced-motion`：开启后取消拖拽/抛出的旋转，CSS 动画也会关闭；菜单支持 Esc 关闭和焦点进入。
 
 ## 资产与版权
 

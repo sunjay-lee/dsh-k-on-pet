@@ -1,0 +1,117 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const Core = require("../src/core.cjs");
+
+test("defaults show only Yui and use v2", () => {
+	const settings = Core.createDefaultSettings();
+	assert.equal(settings.version, 2);
+	assert.equal(settings.scale, 1.5);
+	assert.deepEqual(settings.visible, { yui: true, mio: false, ritsu: false, tsumugi: false, azusa: false });
+	assert.deepEqual(settings.positions, {});
+});
+
+test("migrates v1 character + x/y to v2 visible and positions", () => {
+	const settings = Core.normalizeSettings({ character: "mio", x: 100, y: 200, scale: 2 });
+	assert.equal(settings.version, 2);
+	assert.equal(settings.visible.mio, true);
+	assert.equal(settings.visible.yui, false);
+	assert.deepEqual(settings.positions.mio, { x: 100, y: 200 });
+	assert.equal(settings.scale, 2);
+});
+
+test("keeps explicit visibility, including all hidden", () => {
+	const settings = Core.normalizeSettings({ visible: { mio: true } });
+	assert.equal(settings.visible.mio, true);
+	assert.equal(settings.visible.yui, false);
+	assert.equal(settings.visible.azusa, false);
+	const hidden = Core.normalizeSettings({ visible: {} });
+	assert.equal(Object.values(hidden.visible).some(Boolean), false);
+});
+
+test("drops malformed positions and clamps scale", () => {
+	const settings = Core.normalizeSettings({
+		visible: { yui: true },
+		positions: { yui: { x: "10", y: 20 }, mio: { x: 3, y: Infinity } },
+		scale: 9,
+	});
+	assert.deepEqual(settings.positions, {});
+	assert.equal(settings.scale, 2.4);
+	assert.equal(Core.normalizeSettings({ scale: 0.2 }).scale, 1);
+	assert.equal(Core.normalizeSettings({ scale: "abc" }).scale, 1.5);
+});
+
+test("keeps behavior switches and their defaults", () => {
+	const off = Core.normalizeSettings({ chatter: false, care: false, muted: true });
+	assert.equal(off.chatter, false);
+	assert.equal(off.care, false);
+	assert.equal(off.muted, true);
+	const defaults = Core.normalizeSettings({});
+	assert.equal(defaults.chatter, true);
+	assert.equal(defaults.care, true);
+	assert.equal(defaults.muted, false);
+});
+
+test("export/import round-trips normalized settings", () => {
+	const original = Core.normalizeSettings({ visible: { ritsu: true }, scale: 1.8, positions: { ritsu: { x: 12, y: 34 } } });
+	const restored = Core.importSettings(Core.exportSettings(original));
+	assert.deepEqual(restored, original);
+});
+
+test("import rejects empty, non-JSON and non-object payloads", () => {
+	assert.throws(() => Core.importSettings(""), /空的/);
+	assert.throws(() => Core.importSettings("{"), /JSON/);
+	assert.throws(() => Core.importSettings("[]"), /对象/);
+	assert.throws(() => Core.importSettings("null"), /对象/);
+});
+
+test("bounds keep a minimum of 2px and default position hugs bottom-right", () => {
+	assert.deepEqual(Core.boundsFor(100, 80, 96), { maxX: 2, maxY: 2 });
+	const single = Core.defaultPosition(96, 0, 1, 1000, 800);
+	assert.deepEqual(single, { x: 900, y: 700 });
+	const group = [0, 1, 2].map((index) => Core.defaultPosition(96, index, 3, 1000, 800));
+	assert.ok(group[0].x < group[1].x && group[1].x < group[2].x);
+	for (const point of group) {
+		assert.ok(point.x >= 2 && point.x <= 900);
+		assert.equal(point.y, 700);
+	}
+});
+
+test("stepThrow applies gravity and settles on the floor", () => {
+	let body = { x: 10, y: 0, vx: 0, vy: 0 };
+	let landed = false;
+	for (let index = 0; index < 600 && !landed; index += 1) {
+		const next = Core.stepThrow(body, 1 / 60, { maxX: 900, maxY: 200 });
+		body = next;
+		landed = next.landed;
+	}
+	assert.equal(landed, true);
+	assert.equal(body.y, 200);
+	assert.equal(body.vx, 0);
+	assert.equal(body.vy, 0);
+});
+
+test("stepThrow bounces off side walls and ceiling", () => {
+	const right = Core.stepThrow({ x: 900, y: 100, vx: 1000, vy: 0 }, 1 / 60, { maxX: 900, maxY: 200 });
+	assert.equal(right.x, 900);
+	assert.ok(right.vx < 0);
+	const top = Core.stepThrow({ x: 10, y: 2, vx: 0, vy: -800 }, 1 / 60, { maxX: 900, maxY: 200 });
+	assert.equal(top.y, 2);
+	assert.ok(top.vy > 0);
+});
+
+test("advanceFrame advances at fps and wraps", () => {
+	const advanced = Core.advanceFrame({ frame: 0, acc: 0 }, 0.26, 4, 2);
+	assert.equal(advanced.frame, 1);
+	assert.ok(Math.abs(advanced.acc - 0.01) < 1e-9);
+	assert.deepEqual(Core.advanceFrame({ frame: 1, acc: 0 }, 0.25, 4, 2), { frame: 0, acc: 0 });
+	assert.deepEqual(Core.advanceFrame({ frame: 0, acc: 0 }, 1, 0, 6), { frame: 0, acc: 0 });
+});
+
+test("frameRect maps frame indexes to sheet cells", () => {
+	assert.deepEqual(Core.frameRect(0, 6), { sx: 0, sy: 0, size: 96 });
+	assert.deepEqual(Core.frameRect(7, 6), { sx: 96, sy: 96, size: 96 });
+	assert.deepEqual(Core.frameRect(41, 7), { sx: 576, sy: 480, size: 96 });
+});
