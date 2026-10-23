@@ -27,7 +27,7 @@
 		height: 160,
 		charWidth: 64,
 		charHeight: 128,
-		charTop: 8,
+		charTop: 16,
 		widths: { yui: 64, mio: 64, ritsu: 80, tsumugi: 64, azusa: 64 },
 		frames: 4,
 		fps: 4,

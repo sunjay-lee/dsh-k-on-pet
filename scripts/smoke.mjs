@@ -74,6 +74,7 @@ const child = spawn(chrome, [
 	"--no-first-run",
 	"--no-default-browser-check",
 	"--mute-audio",
+	"--force-device-scale-factor=1",
 	"--window-size=1280,800",
 	"--remote-debugging-port=0",
 	`--user-data-dir=${profile}`,
@@ -235,6 +236,7 @@ function check(condition, message) {
 
 try {
 	await cdp.send("Page.enable");
+	await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
 	await cdp.send("Runtime.enable");
 	await cdp.send("Network.enable");
 	await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 2, mobile: false });
@@ -488,10 +490,10 @@ try {
 	await sleep(500);
 	box = await actorBox(0);
 	const clip = {
-		x: Math.max(0, box.x - 210),
-		y: Math.max(0, box.y - 240),
-		width: Math.min(460, 1280 - Math.max(0, box.x - 210)),
-		height: Math.min(440, 800 - Math.max(0, box.y - 240)),
+		x: Math.max(0, box.x + 5),
+		y: Math.max(0, box.y - 53),
+		width: Math.min(230, 1280 - Math.max(0, box.x + 5)),
+		height: Math.min(290, 800 - Math.max(0, box.y - 53)),
 		scale: 1,
 	};
 	await mkdir(join(root, "docs"), { recursive: true });

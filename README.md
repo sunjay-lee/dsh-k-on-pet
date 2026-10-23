@@ -6,13 +6,13 @@
 
 > 非官方同人移植，与原作者、京都动画、芳文社均无关联。资产版权说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-![预览](docs/preview.png)
+<img src="docs/preview.png" width="286" alt="桌宠预览" />
 
-<sub>真实 DSH 0.2.1-rc.2 右下角实拍：</sub>
+<sub>真实 DSH 0.2.1-rc.2 效果：</sub>
 
-<img src="docs/in-dsh.png" width="280" alt="在 DSH 右下角" />
+<img src="docs/in-dsh.png" width="720" alt="DSH 中的桌宠与茶桌" />
 
-<sub>茶桌与五人入座（`docs/table.png`）：</sub>
+<sub>茶桌与五人入座（唯、律、䌷有坐姿动画）：</sub>
 
 <img src="docs/table.png" width="560" alt="五人围坐在茶桌旁" />
 

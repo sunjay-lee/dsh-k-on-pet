@@ -48,7 +48,7 @@
 .konp-bubble:after{content:"";position:absolute;left:50%;top:100%;width:10px;height:10px;margin-left:-5px;margin-top:-5px;background:inherit;border-right:1px solid rgba(70,55,80,.10);border-bottom:1px solid rgba(70,55,80,.10);transform:rotate(45deg)}
 .konp-gear{position:absolute;right:2px;top:2px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(255,255,255,.92);color:#6b6273;font-size:12px;line-height:20px;padding:0;cursor:pointer;opacity:0;transition:opacity .15s ease;box-shadow:0 2px 8px rgba(0,0,0,.12)}
 .konp-actor:hover .konp-gear,.konp-gear:focus-visible{opacity:1}
-.konp-menu{position:fixed;width:236px;padding:12px;border-radius:16px;background:rgba(255,255,255,.98);color:#3a3340;border:1px solid rgba(70,55,80,.12);box-shadow:0 18px 50px rgba(35,25,45,.22);pointer-events:auto;font-size:12px;animation:konp-pop .16s cubic-bezier(.2,1.4,.4,1)}
+.konp-menu{position:fixed;z-index:2147483600;width:236px;padding:12px;border-radius:16px;background:rgba(255,255,255,.98);color:#3a3340;border:1px solid rgba(70,55,80,.12);box-shadow:0 18px 50px rgba(35,25,45,.22);pointer-events:auto;font-size:12px;animation:konp-pop .16s cubic-bezier(.2,1.4,.4,1)}
 .konp-menu-head{display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:13px;margin:0 0 8px}
 .konp-x{border:0;background:transparent;color:#8b8193;font-size:16px;cursor:pointer;padding:0 2px;line-height:1}
 .konp-label{color:#8b8193;margin:8px 0 5px;font-size:11px;letter-spacing:.02em}
@@ -210,47 +210,75 @@
 			const seatGhostCache = new Map();
 			function loadSeatGhost(id) {
 				if (seatGhostCache.has(id)) return seatGhostCache.get(id);
-				const image = new Image();
-				image.src = `${ASSET_BASE}/table/${id}-frames.png?v=${ASSET_REV}`;
-				const promise = image.decode().then(() => image).catch((error) => {
-					seatGhostCache.delete(id);
-					throw error;
+				const metaPromise = fetch(`${ASSET_BASE}/characters/${id}/meta.json?v=${ASSET_REV}`)
+					.then((response) => {
+						if (!response.ok) throw new Error(`meta ${response.status}`);
+						return response.json();
+					});
+				const imagePromise = new Promise((resolve, reject) => {
+					const image = new Image();
+					image.onload = () => resolve(image);
+					image.onerror = () => reject(new Error(`sheet ${id}`));
+					image.src = `${ASSET_BASE}/characters/${id}/sheet.png?v=${ASSET_REV}`;
 				});
+				const promise = Promise.all([metaPromise, imagePromise])
+					.then(([meta, image]) => ({ meta, image }))
+					.catch((error) => {
+						seatGhostCache.delete(id);
+						throw error;
+					});
 				seatGhostCache.set(id, promise);
 				return promise;
 			}
 
-			// 从座位拖出时显示与座位一致的坐姿帧，保持 4x2 图集里的原始长宽比。
+			// 从座位拖出时恢复角色自己的 held 抓取帧，按 96x96 原始比例显示。
 			function SeatGhost({ id, x, y, width, height }) {
 				const canvasRef = useRef(null);
-				const [image, setImage] = useState(null);
+				const [asset, setAsset] = useState(null);
 				useEffect(() => {
 					let active = true;
-					loadSeatGhost(id).then((value) => { if (active) setImage(value); }).catch(() => {});
+					loadSeatGhost(id).then((value) => { if (active) setAsset(value); }).catch(() => {});
 					return () => { active = false; };
 				}, [id]);
 				useEffect(() => {
 					const canvas = canvasRef.current;
-					if (!canvas || !image) return;
-					const w = TABLE.widths[id] || TABLE.charWidth;
+					if (!canvas || !asset) return;
+					const { meta, image } = asset;
+					const columns = meta.sheet.columns;
+					const frames = meta.clips.held;
 					const ctx = canvas.getContext("2d");
-					ctx.clearRect(0, 0, w, TABLE.charHeight);
-					ctx.drawImage(image, 0, 0, w, TABLE.charHeight, 0, 0, w, TABLE.charHeight);
-				}, [image, id]);
-				if (!image) {
+					let frame = 0;
+					let acc = 0;
+					const draw = () => {
+						const index = frames[frame % frames.length];
+						const rect = Core.frameRect(index, columns);
+						ctx.clearRect(0, 0, CELL, CELL);
+						ctx.drawImage(image, rect.sx, rect.sy, CELL, CELL, 0, 0, CELL, CELL);
+					};
+					draw();
+					return addTicker((dt) => {
+						acc += dt;
+						const step = 1 / (CLIP_FPS.held || 6);
+						while (acc >= step) {
+							acc -= step;
+							frame += 1;
+						}
+						draw();
+					});
+				}, [asset]);
+				if (!asset) {
 					return h("img", {
 						className: "konp-table-ghost",
 						src: `${ASSET_BASE}/table/${id}.png?v=${ASSET_REV}`,
 						alt: "",
 						draggable: false,
-						style: { left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${height}px` },
+						style: { left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${height}px`, objectFit: "contain" },
 					});
 				}
-				const w = TABLE.widths[id] || TABLE.charWidth;
 				return h("canvas", {
 					ref: canvasRef,
-					width: w,
-					height: TABLE.charHeight,
+					width: CELL,
+					height: CELL,
 					className: "konp-table-ghost",
 					style: {
 						position: "fixed",
@@ -993,7 +1021,7 @@
 					h("div", {
 						ref: actorRef,
 						className: "konp-actor",
-						style: { width: size, height: size },
+						style: { width: size, height: size, zIndex: menu ? 2147483000 : undefined },
 						role: "button",
 						tabIndex: 0,
 						"aria-label": `${member.name}桌宠：拖动移动，双击说话，右键打开设置`,
@@ -1098,9 +1126,9 @@
 			}
 
 			const TABLE_ANIM = {
-				yui: [0, 1, 2, 3, 4, 5, 6, 7],
-				ritsu: [0, 1, 2, 3, 4, 5, 6, 7],
-				tsumugi: [0, 1, 2, 3, 4, 5, 6, 7],
+				yui: [0, 4, 5, 6, 7],
+				ritsu: [0, 4, 5],
+				tsumugi: [0, 4, 5, 6, 7],
 			};
 
 			const tableFramesCache = new Map();
@@ -1374,7 +1402,7 @@
 					style: {
 						width: `${width}px`,
 						height: `${height}px`,
-						zIndex: 2147482000,
+						zIndex: menu ? 2147483000 : 2147482000,
 						pointerEvents: "none",
 						transform: `translate3d(${tablePos.x}px, ${tablePos.y}px, 0)`,
 					},
@@ -1410,7 +1438,7 @@
 							animated: Boolean(TABLE_ANIM[seat.id]),
 							style: {
 								position: "absolute",
-								zIndex: 2,
+								zIndex: seat.id === "yui" ? 1 : 2,
 								pointerEvents: "auto",
 								left: `${seat.x * scale}px`,
 								top: `${TABLE.charTop * scale}px`,
@@ -1428,8 +1456,8 @@
 					id: ghost.id,
 					x: ghost.x,
 					y: ghost.y,
-					width: (TABLE.widths[ghost.id] || TABLE.charWidth) * scale,
-					height: TABLE.charHeight * scale,
+					width: CELL * scale,
+					height: CELL * scale,
 				}) : null,
 				menu ? h("div", {
 					ref: menuRef,
@@ -1470,6 +1498,13 @@
 						: Core.tableDefaultPosition(settings.scale, window.innerWidth, window.innerHeight);
 					setTablePos(next);
 				}, [settings.tablePos, settings.table, settings.scale]);
+
+				useEffect(() => {
+					if (!settings.table) return;
+					Object.keys(settings.seats).filter((id) => settings.seats[id]).forEach((id) => {
+						loadSeatGhost(id).catch(() => {});
+					});
+				}, [settings.table, settings.seats]);
 
 				useEffect(() => {
 					const onResize = () => setTablePos((current) => Core.clampTablePosition(
