@@ -6,9 +6,11 @@
 
 > 非官方同人移植，与原作者、京都动画、芳文社均无关联。资产版权说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-![在 DSH 中](docs/in-dsh.png)
-
 ![预览](docs/preview.png)
+
+<sub>真实 DSH 0.2.1-rc.2 右下角实拍：</sub>
+
+<img src="docs/in-dsh.png" width="280" alt="在 DSH 右下角" />
 
 ## 角色与内容
 
