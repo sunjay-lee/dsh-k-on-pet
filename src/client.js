@@ -665,7 +665,7 @@
 				}, []);
 
 				const playVoice = useCallback((meta) => {
-					if (settingsRef.current.muted || !meta || !Array.isArray(meta.voices) || meta.voices.length === 0) return;
+					if (settingsRef.current.muted || !meta || !Array.isArray(meta.voices) || meta.voices.length === 0) return "";
 					let file = Core.pick(meta.voices);
 					if (meta.voices.length > 1 && file === lastVoice.current) {
 						file = Core.pick(meta.voices.filter((voice) => voice !== file));
@@ -677,6 +677,7 @@
 					audio.play().catch(() => {
 						// 没有用户手势时浏览器会拒绝播放，静默忽略。
 					});
+					return file;
 				}, []);
 
 				const setClip = useCallback((engine, clip, mode) => {
@@ -738,8 +739,10 @@
 					engine.lastInteract = performance.now();
 					setClipRow(engine, row, "react");
 					engine.reactUntil = performance.now() + 3000;
-					say(Core.pick(LINES[current.meta.id] || LINES.yui));
-					if (useVoice) playVoice(current.meta);
+					// 气泡跟随实际播放的那条语音（meta.lines 里是逐条的日文/中文），没有就用音符。
+					const file = useVoice ? playVoice(current.meta) : "";
+					const line = file && current.meta.lines ? current.meta.lines[file] : null;
+					say((line && line.zh) || "♪", 2600);
 				}, [playVoice, say, setClipRow]);
 
 				const triggerClick = useCallback(() => reactNow(true), [reactNow]);
@@ -758,8 +761,7 @@
 					engine.lastInteract = now;
 					setClipRow(engine, actions.dance, "dance");
 					engine.danceUntil = now + Math.max(2400, (frames.length / 5) * 1000 * 3);
-					const line = Core.pick(LINES[current.meta.id] || []);
-					say(`❤ ${line}`, 4600);
+					say("❤", 2600);
 				}, [say, setClipRow]);
 
 				// 初始位置：恢复该角色上次位置，否则按当前可见数量排在右下角。
