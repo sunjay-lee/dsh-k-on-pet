@@ -571,6 +571,23 @@
 						),
 						h("div", { className: "konp-set-row" },
 							h("div", { className: "konp-set-name" },
+								h("b", null, "跟随概率"),
+								h("small", null, "每次待机结束时决定要不要追过去"),
+							),
+							h("input", {
+								className: "konp-range",
+								type: "range",
+								min: 0,
+								max: 100,
+								step: 5,
+								value: settings.followChance,
+								"aria-label": "跟随概率（百分比）",
+								onChange: (event) => updateSettings({ followChance: Number(event.target.value) }),
+							}),
+							h("span", { className: "konp-set-value" }, `${settings.followChance}%`),
+						),
+						h("div", { className: "konp-set-row" },
+							h("div", { className: "konp-set-name" },
 								h("b", null, "语音"),
 								h("small", null, "点击 / 双击时播放原版语音"),
 							),
@@ -849,9 +866,10 @@
 						};
 					};
 					if (current.follow) {
+						const chance = current.followChance / 100;
 						const leaderId = FOLLOW_TARGET[member.id];
 						if (leaderId) {
-							const followed = tryFollow(leaderId, 700, 0.8);
+							const followed = tryFollow(leaderId, 700, chance);
 							if (followed) return followed;
 						} else if (member.id === "tsumugi") {
 							// 两对都待久了、且自己在附近 → 随机跟其中一队
@@ -860,7 +878,7 @@
 								return peer && now - peer.movedAt > 5000;
 							});
 							if (idleLong.length) {
-								const followed = tryFollow(Core.pick(idleLong), 600, 0.6);
+								const followed = tryFollow(Core.pick(idleLong), 600, chance * 0.75);
 								if (followed) return followed;
 							}
 						}
@@ -906,6 +924,22 @@
 						const limit = bounds(size);
 						posRef.current.x = Core.clamp(posRef.current.x, 2, limit.maxX);
 						posRef.current.y = Core.clamp(posRef.current.y, 2, limit.maxY);
+						// 角色之间不重叠：靠得太近就沿连线轻推开（拖拽时由指针接管）
+						if (engine.mode !== "drag") {
+							const minGap = actorSize * 0.85;
+							for (const [peerId, peer] of PEERS) {
+								if (peerId === member.id) continue;
+								const dx = posRef.current.x - peer.x;
+								const dy = posRef.current.y - peer.y;
+								const dist = Math.hypot(dx, dy);
+								if (dist > 0.01 && dist < minGap) {
+									const push = (minGap - dist) * 0.5;
+									posRef.current.x += (dx / dist) * push;
+									posRef.current.y += (dy / dist) * push;
+								}
+							}
+						}
+
 						syncTransform();
 					};
 					window.addEventListener("resize", onResize);
