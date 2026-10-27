@@ -158,3 +158,50 @@ test("table lock persists through normalize/default", () => {
 	assert.equal(Core.createDefaultSettings().tableLocked, false);
 	assert.equal(Core.normalizeSettings({ tableLocked: true }).tableLocked, true);
 });
+
+test("wander defaults on and can be turned off", () => {
+	assert.equal(Core.createDefaultSettings().wander, true);
+	assert.equal(Core.normalizeSettings({}).wander, true);
+	assert.equal(Core.normalizeSettings({ wander: false }).wander, false);
+});
+
+test("returnAfter defaults to 5 minutes and clamps to 0-60", () => {
+	assert.equal(Core.createDefaultSettings().returnAfter, 5);
+	assert.equal(Core.normalizeSettings({}).returnAfter, 5);
+	assert.equal(Core.normalizeSettings({ returnAfter: 0 }).returnAfter, 0);
+	assert.equal(Core.normalizeSettings({ returnAfter: 12 }).returnAfter, 12);
+	assert.equal(Core.normalizeSettings({ returnAfter: 90 }).returnAfter, 60);
+});
+
+test("planWalk returns a unit direction and a positive duration", () => {
+	for (let i = 0; i < 50; i += 1) {
+		const plan = Core.planWalk(400, 600, { maxX: 900, maxY: 700 }, 1.5);
+		assert.ok(Math.abs(Math.hypot(plan.dx, plan.dy) - 1) < 1e-9, "方向必须是单位向量");
+		assert.ok(plan.distance > 0 && plan.duration > 0);
+	}
+});
+
+test("stepWalk moves along the plan in any direction", () => {
+	const right = { dx: 1, dy: 0, distance: 100, duration: 1000 };
+	const a = Core.stepWalk({ x: 0, y: 0 }, right, 42, 1);
+	assert.ok(Math.abs(a.x - 42) < 1e-9);
+	assert.equal(a.y, 0);
+	const down = { dx: 0, dy: 1, distance: 100, duration: 1000 };
+	const b = Core.stepWalk({ x: 10, y: 10 }, down, 42, 0.5);
+	assert.equal(b.x, 10);
+	assert.ok(Math.abs(b.y - 31) < 1e-9);
+});
+
+test("wrapPosition wraps around all four edges", () => {
+	const vw = 800, vh = 600, size = 96;
+	const bottom = Core.wrapPosition(10, vh + 10, size, vw, vh);
+	assert.ok(bottom.y < 0, "从下面走出去应该从上面回来");
+	const top = Core.wrapPosition(10, -size - 10, size, vw, vh);
+	assert.ok(top.y > vh * 0.5, "从上面走出去应该从下面回来");
+	const right = Core.wrapPosition(vw + 10, 10, size, vw, vh);
+	assert.ok(right.x < 0);
+	const left = Core.wrapPosition(-size - 10, 10, size, vw, vh);
+	assert.ok(left.x > vw * 0.5);
+	const inside = Core.wrapPosition(200, 200, size, vw, vh);
+	assert.deepEqual(inside, { x: 200, y: 200 });
+});

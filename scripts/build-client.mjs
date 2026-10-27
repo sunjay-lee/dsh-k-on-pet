@@ -6,7 +6,7 @@
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const assetsDir = join(root, "assets");
@@ -22,12 +22,23 @@ async function walk(dir) {
 	return files;
 }
 
-/** sheet/语音/头像任一变化都会让客户端请求新 URL，避免旧尺寸图集被缓存。 */
+/**
+ * sheet/语音/头像任一变化都会让客户端请求新 URL，避免旧尺寸图集被缓存。
+ *
+ * 摘要必须与平台无关：相对路径统一用 "/" 分隔、按该字符串排序，
+ * 否则 Windows（"\\"）与 Linux（"/"）算出的 rev 不同，CI 的
+ * 「Bundle is committed」校验会误报。
+ */
 export async function assetRevision() {
+	const entries = (await walk(assetsDir)).map((file) => ({
+		rel: relative(assetsDir, file).split(sep).join("/"),
+		file,
+	}));
+	entries.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 	const hash = createHash("sha256");
-	for (const file of (await walk(assetsDir)).sort()) {
-		hash.update(relative(assetsDir, file));
-		hash.update(await readFile(file));
+	for (const entry of entries) {
+		hash.update(entry.rel);
+		hash.update(await readFile(entry.file));
 	}
 	return hash.digest("hex").slice(0, 12);
 }

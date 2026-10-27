@@ -1,7 +1,7 @@
 {
   "name": "dsh-k-on-pet",
-  "version": "0.5.3",
-  "description": "K-ON! 轻音少女桌面宠物：把平泽唯、秋山澪、田井中律、琴吹䌷、中野梓挂进 DeepSeek Harness 的 Web 界面。",
+  "version": "0.6.0",
+  "description": "《轻音少女》五位角色的 DSH Web 桌宠：任意方位行走、待机/点击/双击动作、茶桌与自动回位。",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -59,7 +59,8 @@
     "check": "node scripts/check.mjs",
     "build:meta": "python3 scripts/build-meta.py",
     "test:unit": "node --test test/core.test.mjs",
-    "test": "npm run build && node scripts/check.mjs && node --test test/core.test.mjs && node scripts/smoke.mjs",
+    "test": "npm run build && node scripts/check.mjs && node --test test/core.test.mjs",
+    "test:smoke": "node scripts/smoke.mjs",
     "prepublishOnly": "npm run build && node scripts/check.mjs && npm run test:unit"
   },
   "keywords": [
