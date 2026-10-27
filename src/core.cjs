@@ -435,7 +435,10 @@
 						name: typeof anim.name === "string" ? anim.name.slice(0, 40) : "动作",
 						row: Number.isInteger(anim.row) ? anim.row : 0,
 						rows: Number.isInteger(anim.rows) ? anim.rows : 1,
-						frames: Array.isArray(anim.frames) ? anim.frames.filter((n) => Number.isInteger(n)).slice(0, 60) : [],
+						frames: Array.isArray(anim.frames)
+						// null = 空白帧；超出本行列数的偏移一律当空帧，避免指到别人那一格
+						? anim.frames.slice(0, 60).map((n) => (Number.isInteger(n) && n >= 0 && n < cols ? n : null))
+						: [],
 					}))
 					: [],
 				order: Array.isArray(value.order)

@@ -155,15 +155,20 @@
 .konp-dev-rowbtn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;border:1px solid rgba(127,127,127,.25);border-radius:8px;background:transparent;cursor:pointer;font-size:11px}
 .konp-dev-rowbtn.active{border-color:rgba(127,127,127,.75);background:rgba(127,127,127,.1)}
 .konp-dev-rowbtn canvas{image-rendering:pixelated;background:rgba(127,127,127,.08);border-radius:4px}
-.konp-dev-order{padding-top:8px;border-top:1px dashed rgba(127,127,127,.2);margin-top:6px;display:flex;flex-direction:column;gap:6px}
+.konp-dev-order{padding-top:8px;border-top:1px dashed rgba(127,127,127,.2);margin-top:6px;display:flex;flex-direction:column;gap:6px;flex:1 1 300px;min-width:0}
 .konp-dev-orderlist{display:flex;flex-wrap:wrap;gap:6px}
 .konp-dev-frame{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 10px;border:1px solid rgba(127,127,127,.35);border-radius:8px;font-size:12px;cursor:grab;background:rgba(127,127,127,.08)}
 .konp-dev-frame.active{border-color:rgba(127,127,127,.9);background:rgba(127,127,127,.18)}
+.konp-dev-frame.is-empty{border-style:dashed;opacity:.65}
 .konp-dev-frame canvas{image-rendering:pixelated;background:rgba(127,127,127,.1);border-radius:4px}
 .konp-dev-frame-del{position:absolute;top:-6px;right:-6px;border:0;border-radius:50%;width:16px;height:16px;font-size:10px;line-height:1;cursor:pointer;background:#e55;color:#fff}
 .konp-dev-added{display:flex;gap:12px;align-items:center;padding-top:8px;border-top:1px dashed rgba(127,127,127,.2);margin-top:6px}
 .konp-dev-added canvas{image-rendering:pixelated;background:rgba(127,127,127,.08);border-radius:10px}
-.konp-dev-sheet{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px dashed rgba(127,127,127,.45);border-radius:10px;margin-top:8px}
+.konp-dev-sheet{display:flex;flex-direction:column;gap:8px;padding-top:8px;border-top:1px dashed rgba(127,127,127,.2);margin-top:6px}
+.konp-dev-name{display:flex;align-items:center;gap:8px;font-size:12px}
+.konp-dev-name span{width:34px;opacity:.7}
+.konp-dev-name input{flex:1;max-width:280px;border-radius:6px;padding:4px 8px}
+.konp-dev-name input:disabled{opacity:.5}
 .konp-dev-sheet-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .konp-dev-radio{display:flex;align-items:center;gap:5px;font-size:12px;opacity:.85}
 .konp-dev-thumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -420,17 +425,20 @@
 				return h("style", { "data-konp-style": "inline", dangerouslySetInnerHTML: { __html: CSS } });
 			}
 
-			// 导入后的图集：官方行沿用原 cells，追加行按实际帧数标记有效/空白
+			// 导入后的图集：官方行沿用原 cells，追加行按「该动作自己的帧数」标记有效格
 			const withCustomSheet = (meta, custom) => {
 				const cols = custom.cols;
 				const officialRows = custom.officialRows ?? meta.sheet.rows;
 				const cells = (meta.cells || []).filter((cell) => Math.floor(cell.index / meta.sheet.columns) < officialRows);
-				const frames = custom.frames || 0;
+				// 空帧（null）也占一格，编辑器里要能看到空格；播放时由 frameOrder 过滤掉
+				const slots = new Map();
+				for (const anim of (custom.anims || [])) {
+					slots.set(anim.row, Array.isArray(anim.frames) ? anim.frames.length : 0);
+				}
 				for (let row = officialRows; row < custom.rows; row += 1) {
+					const total = slots.get(row) || 0;
 					for (let col = 0; col < cols; col += 1) {
-						const index = row * cols + col;
-						const frameIndex = (row - officialRows) * cols + col;
-						cells.push({ index, bbox: frameIndex < frames ? [0, 0, 96, 96] : [0, 0, 0, 0] });
+						cells.push({ index: row * cols + col, bbox: col < total ? [0, 0, 96, 96] : [0, 0, 0, 0] });
 					}
 				}
 				const frameOrder = {};
@@ -453,41 +461,12 @@
 				["click", "单击"], ["dance", "双击"], ["sleep", "睡眠"], ["held", "拖拽"],
 			];
 
-			// 添加新动作：选图片 → 起名 → 生成一个可编辑的动画条目（官方行只读）
-			function DevSheetImport({ member, settings, updateSettings, focusedRow }) {
+			// 添加新动作：选图片 → 拼进图集 → 挂到当前状态上（官方行只读）
+			function DevSheetImport({ member, settings, updateSettings, setHint, onAdded, onRestore, onDelete }) {
 				const [busy, setBusy] = useState(false);
-				const [lastAdded, setLastAdded] = useState(null);
-				const [confirmKind, setConfirmKind] = useState(null);
-				const [hint, setHint] = useState("");
-				const [frameCount, setFrameCount] = useState(0);
 				const current = (settings.sheetOverrides || {})[member.id];
 				const anims = (current && Array.isArray(current.anims)) ? current.anims : [];
 				const fileRef = useRef(null);
-				const addedCanvasRef = useRef(null);
-				const lastPickRef = useRef(null);
-
-				// 刚添加的动作：按官方站立速度（约 4 帧/秒）预览
-				useEffect(() => {
-					if (!lastAdded || !current) return;
-					const canvas = addedCanvasRef.current;
-					if (!canvas) return;
-					const context = canvas.getContext("2d");
-					const sheet = new Image();
-					sheet.src = current.src;
-					const cols = current.cols;
-					let index = 0;
-					let timer = 0;
-					sheet.onload = () => {
-						timer = window.setInterval(() => {
-							const total = Math.max(1, lastAdded.frames);
-							const cell = lastAdded.row * cols + (index % total);
-							context.clearRect(0, 0, canvas.width, canvas.height);
-							context.drawImage(sheet, (cell % cols) * 96, Math.floor(cell / cols) * 96, 96, 96, 0, 0, canvas.width, canvas.height);
-							index += 1;
-						}, 250);
-					};
-					return () => window.clearInterval(timer);
-				}, [lastAdded, current]);
 
 				const loadOfficial = () => Promise.race([new Promise((resolve) => {
 					fetch(`${ASSET_BASE}/characters/${member.id}/meta.json?v=${ASSET_REV}`)
@@ -501,54 +480,6 @@
 						.catch(() => resolve(null));
 				}), new Promise((resolve) => setTimeout(() => resolve(null), 6000))]);
 
-				// 帧数变化：用暂存的原图重新拼一个动作，替换掉刚添加的那个
-				const repad = async (count) => {
-					const picked = lastPickRef.current;
-					if (!picked || !picked.length || count <= 0) return;
-					if (!lastAdded || !current) return;
-					setBusy(true);
-					setHint("正在按新帧数重拼…");
-					try {
-						const cols = current.cols;
-						const officialRows = current.officialRows ?? 0;
-						const baseRows = current.rows;
-						const frames = picked.slice(0, count);
-						while (frames.length < count) frames.push(null);
-						const canvas = document.createElement("canvas");
-						canvas.width = cols * 96;
-						canvas.height = (baseRows + Math.ceil(frames.length / cols)) * 96;
-						const context = canvas.getContext("2d");
-						context.imageSmoothingEnabled = false;
-						const base = await new Promise((resolve) => {
-							const img = new Image();
-							img.onload = () => resolve(img);
-							img.onerror = () => resolve(null);
-							img.src = current.src;
-						});
-						if (base) context.drawImage(base, 0, 0);
-						frames.forEach((frame, index) => {
-							if (!frame) return;
-							const img = frame.img || frame;
-							context.drawImage(img, 0, 0, img.width, img.height, (index % cols) * 96, (baseRows + Math.floor(index / cols)) * 96, 96, 96);
-						});
-						updateSettings((now) => {
-							const table = { ...(now.sheetOverrides || {}) };
-							const entry = table[member.id];
-							if (!entry) return now;
-							const anims = (entry.anims || []).filter((anim) => anim.row !== lastAdded.row);
-							anims.push({ name: lastAdded.name, row: baseRows, rows: Math.ceil(frames.length / cols), frames: frames.map((_, index) => index) });
-							table[member.id] = { ...entry, src: canvas.toDataURL("image/png"), rows: baseRows + Math.ceil(frames.length / cols), anims };
-							return { ...now, sheetOverrides: table };
-						});
-						setLastAdded({ row: baseRows, name: lastAdded.name, frames: frames.length });
-						setHint(`已按 ${count} 帧重拼`);
-					} catch (error) {
-						setHint("重拼失败：" + (error && error.message ? error.message : "未知错误"));
-					} finally {
-						setBusy(false);
-					}
-				};
-
 				const addAction = async (event) => {
 					const list = Array.from(event.target.files || []);
 					event.target.value = "";
@@ -556,96 +487,72 @@
 					setBusy(true);
 					setHint("正在读取图片…");
 					try {
-					const official = await loadOfficial();
-					if (!official) { setBusy(false); setHint("读取官方图集失败"); return; }
-					const cols = official.meta.sheet.columns;
-					const officialRows = official.meta.sheet.rows;
-					const images = await Promise.all(list.map((file) => new Promise((resolve) => {
-						const reader = new FileReader();
-						reader.onload = () => {
-							const img = new Image();
-							img.onload = () => resolve({ name: file.name, img });
-							img.onerror = () => resolve(null);
-							img.src = String(reader.result);
-						};
-						reader.readAsDataURL(file);
-					})));
-					const picked = images.filter(Boolean);
-					lastPickRef.current = picked;
-					const frames = (frameCount > 0 ? picked.slice(0, frameCount) : picked).slice(0, 60);
-					// 选了 6 帧但只给 3 张图：用空白帧补齐
-					while (frameCount > 0 && frames.length < frameCount && frames.length < 60) frames.push(null);
-					if (!frames.length) { setBusy(false); setHint("没有读到图片"); return; }
-					const name = `动作 ${anims.length + 1}`;
-					const baseRows = current ? current.rows : officialRows;
-					const startRow = baseRows;
-					const extraRows = Math.ceil(frames.length / cols);
-					const canvas = document.createElement("canvas");
-					canvas.width = cols * 96;
-					canvas.height = (startRow + extraRows) * 96;
-					const context = canvas.getContext("2d");
-					context.imageSmoothingEnabled = false;
-					const base = current
-						? await new Promise((resolve) => {
-							const img = new Image();
-							img.onload = () => resolve(img);
-							img.onerror = () => resolve(official.img);
-							img.src = current.src;
-						})
-						: official.img;
-					context.drawImage(base, 0, 0);
-					frames.forEach((frame, index) => {
-						if (!frame) return; // 空白帧
-						const row = startRow + Math.floor(index / cols);
-						const col = index % cols;
-						context.drawImage(frame.img, 0, 0, frame.img.width, frame.img.height, col * 96, row * 96, 96, 96);
-					});
-					const nextAnims = [...anims, {
-						name,
-						row: startRow,
-						rows: extraRows,
-						frames: frames.map((_, index) => index),
-					}];
-					// 记录帧序列：超过一行（6 格）的动画也能完整播放
-					const order = Array.isArray(current && current.order) ? [...current.order] : [];
-					order[startRow - officialRows] = frames.map((_, index) => index);
-					try {
-						updateSettings((now) => ({
-							...now,
-							sheetOverrides: {
-								...(now.sheetOverrides || {}),
-								[member.id]: {
-									src: canvas.toDataURL("image/png"),
-									cols,
-									rows: startRow + extraRows,
-									officialRows,
-									frames: (current ? (current.frames || 0) : 0) + frames.length,
-									kind: "自定义",
-									name,
-									order,
-									anims: nextAnims,
+						const official = await loadOfficial();
+						if (!official) { setHint("读取官方图集失败"); return; }
+						const cols = official.meta.sheet.columns;
+						const officialRows = official.meta.sheet.rows;
+						const images = await Promise.all(list.map((file) => new Promise((resolve) => {
+							const reader = new FileReader();
+							reader.onload = () => {
+								const img = new Image();
+								img.onload = () => resolve(img);
+								img.onerror = () => resolve(null);
+								img.src = String(reader.result);
+							};
+							reader.readAsDataURL(file);
+						})));
+						// 一个动作占一行，行内格子按 0..cols-1 编号；多选的图片取前 cols 张
+						const frames = images.filter(Boolean).slice(0, cols);
+						if (!frames.length) { setHint("没有读到图片"); return; }
+						const name = `动作 ${anims.length + 1}`;
+						const baseRows = current ? current.rows : officialRows;
+						const startRow = baseRows;
+						const canvas = document.createElement("canvas");
+						canvas.width = cols * 96;
+						canvas.height = (startRow + 1) * 96;
+						const context = canvas.getContext("2d");
+						context.imageSmoothingEnabled = false;
+						const base = current
+							? await new Promise((resolve) => {
+								const img = new Image();
+								img.onload = () => resolve(img);
+								img.onerror = () => resolve(official.img);
+								img.src = current.src;
+							})
+							: official.img;
+						context.drawImage(base, 0, 0);
+						frames.forEach((img, index) => {
+							context.drawImage(img, 0, 0, img.width, img.height, index * 96, startRow * 96, 96, 96);
+						});
+						const offsets = frames.map((_, index) => index);
+						const src = canvas.toDataURL("image/png");
+						updateSettings((now) => {
+							const entry = (now.sheetOverrides || {})[member.id] || {};
+							return {
+								...now,
+								sheetOverrides: {
+									...(now.sheetOverrides || {}),
+									[member.id]: {
+										...entry,
+										src,
+										cols,
+										rows: startRow + 1,
+										officialRows,
+										kind: "自定义",
+										name,
+										anims: [...(Array.isArray(entry.anims) ? entry.anims : []), { name, row: startRow, rows: 1, frames: offsets }],
+									},
 								},
-							},
-						}));
-						setLastAdded({ row: startRow, name, frames: frames.length });
-						setHint(`已添加「${name}」`);
-					} catch (error) {
-						setHint("保存失败：" + (error && error.message ? error.message : "存储空间不足"));
-					}
+							};
+						});
+						onAdded(startRow);
+						setHint(`已添加「${name}」（${offsets.length} 帧）`);
 					} catch (error) {
 						setHint("出错了：" + (error && error.message ? error.message : String(error)));
 					} finally {
 						setBusy(false);
 					}
 				};
-
-				const removeAction = (row) => updateSettings((now) => {
-					const table = { ...(now.sheetOverrides || {}) };
-					const entry = table[member.id];
-					if (!entry) return now;
-					table[member.id] = { ...entry, anims: (entry.anims || []).filter((anim) => anim.row !== row) };
-					return { ...now, sheetOverrides: table };
-				});
 
 				return h("div", { className: "konp-dev-sheet" },
 					h("div", { className: "konp-dev-sheet-row" },
@@ -655,28 +562,15 @@
 							disabled: busy,
 							onClick: () => fileRef.current && fileRef.current.click(),
 						}, busy ? "处理中…" : "添加新动作"),
-						h("select", {
-							value: frameCount,
-							onChange: (event) => {
-								const next = Number(event.target.value);
-								setFrameCount(next);
-								repad(next);
-							},
-							style: { borderRadius: "8px", padding: "4px 6px" },
-						}, h("option", { value: 0 }, "帧数：自动"), ...[1, 2, 3, 4, 5, 6].map((n) => h("option", { key: n, value: n }, `帧数：${n}`))),
 						current ? h("button", {
 							className: "konp-set-btn",
 							type: "button",
-							onClick: () => updateSettings((now) => {
-								const table = { ...(now.sheetOverrides || {}) };
-								delete table[member.id];
-								return { ...now, sheetOverrides: table };
-							}),
+							onClick: onRestore,
 						}, "一键恢复原图集") : null,
 						current ? h("button", {
 							className: "konp-set-btn",
 							type: "button",
-							onClick: () => setConfirmKind("delete"),
+							onClick: onDelete,
 						}, "删除导入图集") : null,
 						h("input", {
 							ref: fileRef,
@@ -687,65 +581,6 @@
 							onChange: addAction,
 						}),
 					),
-					anims.length ? h("div", { className: "konp-dev-anims" },
-						...anims.map((anim, index) => h("div", { key: anim.row, className: "konp-dev-anim" },
-							h("input", {
-								type: "text",
-								value: anim.name,
-								style: { borderRadius: "6px", padding: "4px 8px", width: "100%", maxWidth: "240px", display: "block", marginBottom: "4px" },
-								onChange: (event) => updateSettings((now) => {
-									const table = { ...(now.sheetOverrides || {}) };
-									const entry = table[member.id];
-									if (!entry) return now;
-									const list = (entry.anims || []).slice();
-									list[index] = { ...list[index], name: event.target.value };
-									table[member.id] = { ...entry, anims: list };
-									return { ...now, sheetOverrides: table };
-								}),
-							}),
-							h("span", null, `${(anim.frames || []).length} 帧 · row ${anim.row}`),
-							h("button", {
-								className: "konp-dev-del",
-								type: "button",
-								onClick: () => removeAction(anim.row),
-							}, "✕"),
-						)),
-					) : null,
-					lastAdded && focusedRow !== lastAdded.row ? h("div", { className: "konp-dev-added" },
-						h("canvas", { ref: addedCanvasRef, width: 144, height: 144 }),
-						h("div", null,
-							h("small", null, `刚添加：${lastAdded.name}（${lastAdded.frames} 帧）`),
-							h("div", { className: "konp-set-actions" },
-								h("button", { className: "konp-set-btn", type: "button", onClick: () => setLastAdded(null) }, "保留"),
-								h("button", {
-									className: "konp-set-btn",
-									type: "button",
-									onClick: () => { removeAction(lastAdded.row); setLastAdded(null); },
-								}, "撤销"),
-							),
-						),
-					) : null,
-					confirmKind ? h("div", { className: "konp-dev-sheet-row" },
-						h("small", null, confirmKind === "delete" ? "确认删除整个导入图集？" : "确认恢复官方图集？"),
-						h("button", {
-							className: "konp-set-btn",
-							type: "button",
-							onClick: () => {
-								updateSettings((now) => {
-									const sheets = { ...(now.sheetOverrides || {}) };
-									const acts = { ...(now.actionOverrides || {}) };
-									delete sheets[member.id];
-									if (confirmKind === "delete") delete acts[member.id];
-									return { ...now, sheetOverrides: sheets, actionOverrides: acts };
-								});
-								setHint(confirmKind === "delete" ? "已删除该角色的导入图集" : "已恢复官方图集");
-								setConfirmKind(null);
-							},
-						}, "确认"),
-						h("button", { className: "konp-set-btn", type: "button", onClick: () => setConfirmKind(null) }, "取消"),
-					) : null,
-					h("small", { className: "konp-dev-hint" }, hint),
-					h("small", { className: "konp-dev-hint" }, "支持 PNG / JPG / WebP"),
 				);
 			}
 
@@ -770,31 +605,12 @@
 			function DevActionEditor({ member, settings, updateSettings, open, onToggle }) {
 				const [meta, setMeta] = useState(null);
 				const [focus, setFocus] = useState("idle");
-				const [orderDraft, setOrderDraft] = useState([]);
+				const [draft, setDraft] = useState(null); // 拖动后还没写回的帧顺序 { row, frames }
 				const [previewFrame, setPreviewFrame] = useState(null);
-				const frameRefs = useRef(new Map());
+				const [hint, setHint] = useState("");
+				const [confirmKind, setConfirmKind] = useState(null);
 				const canvasRef = useRef(null);
-				const rowsRef = useRef([]);
-				const thumbRefs = useRef(new Map());
-
-				useEffect(() => {
-					if (!meta) return;
-					const override = (settings.sheetOverrides || {})[member.id];
-					const sheet = new Image();
-					sheet.src = override ? override.src : `${ASSET_BASE}/characters/${member.id}/sheet.png?v=${ASSET_REV}`;
-					sheet.onload = () => {
-						const cols = meta.sheet.columns;
-						thumbRefs.current.forEach((canvas, row) => {
-							if (!canvas) return;
-							const first = (meta.cells || []).find((cell) => Math.floor(cell.index / cols) === row && cell.bbox
-								&& cell.bbox[2] - cell.bbox[0] >= 20 && cell.bbox[3] - cell.bbox[1] >= 40);
-							if (!first) return;
-							const context = canvas.getContext("2d");
-							context.clearRect(0, 0, canvas.width, canvas.height);
-							context.drawImage(sheet, (first.index % cols) * 96, Math.floor(first.index / cols) * 96, 96, 96, 0, 0, canvas.width, canvas.height);
-						});
-					};
-				}, [meta, member.id, focus]);
+				const frameRefs = useRef(new Map());
 
 				useEffect(() => {
 					let alive = true;
@@ -810,160 +626,82 @@
 				}, [member.id, settings.sheetOverrides]);
 
 				const override = (settings.actionOverrides || {})[member.id] || {};
-				const pickRow = (base, state) => {
-					if (override[state] !== undefined) return override[state];
-					return base && base[state] !== undefined ? base[state] : 0;
-				};
 				const current = meta ? { ...(meta.actions || {}), ...override } : {};
+				const sheetInfo = (settings.sheetOverrides || {})[member.id];
+				const officialRows = sheetInfo ? (sheetInfo.officialRows ?? 0) : 0;
+				const cols = meta ? meta.sheet.columns : 6;
+				const rowIndex = Number(current[focus]) || 0;
+				const isImportedRow = Boolean(sheetInfo) && rowIndex >= officialRows;
+				const anims = sheetInfo && Array.isArray(sheetInfo.anims) ? sheetInfo.anims : [];
+				const anim = anims.find((item) => item.row === rowIndex);
+				const savedFrames = anim && Array.isArray(anim.frames) ? anim.frames : [];
+				// 帧序列的唯一来源是 anims[].frames（null = 空帧）；拖动先写草稿，点「保存」才落库
+				const frames = draft && draft.row === rowIndex && draft.frames.length === savedFrames.length ? draft.frames : savedFrames;
+				const framesKey = frames.join(",");
 
+				// 预览画布：播放当前行；点某一格就停在那张
 				useEffect(() => {
 					if (!meta) return;
 					const canvas = canvasRef.current;
 					if (!canvas) return;
 					const context = canvas.getContext("2d");
-					const previewOverride = (settings.sheetOverrides || {})[member.id];
 					const sheet = new Image();
-					sheet.src = previewOverride ? previewOverride.src : `${ASSET_BASE}/characters/${member.id}/sheet.png?v=${ASSET_REV}`;
-					const cols = meta.sheet.columns;
-					const frames = (meta.cells || [])
-						.filter((cell) => Math.floor(cell.index / cols) === Number(current[focus]) && cell.bbox)
-						.filter((cell) => cell.bbox[2] - cell.bbox[0] >= 20 && cell.bbox[3] - cell.bbox[1] >= 40)
-						.map((cell) => cell.index);
-					rowsRef.current = frames;
-					if (previewFrame !== null && frames.length) {
-						const order = orderDraft.length === totalFrames ? orderDraft : Array.from({ length: totalFrames }, (_, i) => i);
-						const cellIndex = frames[order[previewFrame]];
-						const drawOnce = () => {
-							if (!sheet.complete || cellIndex === undefined) return;
-							context.clearRect(0, 0, canvas.width, canvas.height);
-							context.drawImage(sheet, (cellIndex % cols) * 96, Math.floor(cellIndex / cols) * 96, 96, 96, 0, 0, canvas.width, canvas.height);
-						};
-						sheet.onload = drawOnce;
-						drawOnce();
+					sheet.src = sheetInfo ? sheetInfo.src : `${ASSET_BASE}/characters/${member.id}/sheet.png?v=${ASSET_REV}`;
+					const draw = (cellIndex) => {
+						if (!sheet.complete || !Number.isFinite(cellIndex)) return;
+						context.clearRect(0, 0, canvas.width, canvas.height);
+						context.drawImage(sheet, (cellIndex % cols) * 96, Math.floor(cellIndex / cols) * 96, 96, 96, 0, 0, canvas.width, canvas.height);
+					};
+					const picked = previewFrame === null ? null : frames[previewFrame];
+					if (picked !== null && picked !== undefined) {
+						const cell = rowIndex * cols + picked;
+						sheet.onload = () => draw(cell);
+						draw(cell);
 						return;
 					}
 					let index = 0;
-					let timer = 0;
+					const sequence = rowFrames(meta, rowIndex);
 					const paint = () => {
-						if (!sheet.complete || !frames.length) return;
-						context.clearRect(0, 0, canvas.width, canvas.height);
-						const cell = frames[index % frames.length];
-						const cx = cell % cols;
-						const cy = Math.floor(cell / cols);
-						context.drawImage(sheet, cx * 96, cy * 96, 96, 96, 0, 0, canvas.width, canvas.height);
+						if (sequence.length) draw(sequence[index % sequence.length]);
 					};
 					sheet.onload = paint;
-					timer = window.setInterval(() => { index += 1; paint(); }, 260);
+					paint();
+					const timer = window.setInterval(() => { index += 1; paint(); }, 260);
 					return () => window.clearInterval(timer);
-				}, [meta, focus, current[focus], member.id, previewFrame, orderDraft, settings.sheetOverrides]);
+				}, [meta, rowIndex, focus, previewFrame, framesKey, sheetInfo, member.id, cols]);
 
+				// 帧方块缩略图：只画非空帧，空帧留白
 				useEffect(() => {
-					if (!meta || !isImportedRow) return;
-					const override = (settings.sheetOverrides || {})[member.id];
-					if (!override) return;
+					if (!meta || !sheetInfo) return;
 					const sheet = new Image();
-					sheet.src = override.src;
-					const cols = meta.sheet.columns;
-					sheet.onload = () => {
-						const order = orderDraft.length === totalFrames ? orderDraft : Array.from({ length: totalFrames }, (_, i) => i);
+					sheet.src = sheetInfo.src;
+					const paint = () => {
 						frameRefs.current.forEach((canvas, position) => {
-							const cellIndex = rowCells[order[position]];
-							if (cellIndex === undefined || !canvas) return;
+							if (!canvas) return;
 							const context = canvas.getContext("2d");
 							context.clearRect(0, 0, canvas.width, canvas.height);
+							const offset = frames[position];
+							if (offset === null || offset === undefined) return;
+							const cellIndex = rowIndex * cols + offset;
 							context.drawImage(sheet, (cellIndex % cols) * 96, Math.floor(cellIndex / cols) * 96, 96, 96, 0, 0, canvas.width, canvas.height);
 						});
 					};
-				}, [meta, member.id, settings.sheetOverrides, orderDraft, previewFrame]);
+					sheet.onload = paint;
+					if (sheet.complete) paint();
+				}, [meta, sheetInfo, rowIndex, cols, framesKey]);
 
 				if (!meta) return h("div", { className: "konp-set-row" }, h("small", null, `${member.name}：加载中…`));
 
-				const rows = meta.sheet.rows;
-				const frameCount = (row) => (meta.cells || []).filter((cell) => Math.floor(cell.index / meta.sheet.columns) === Number(row)
+				const validFrames = (row) => (meta.cells || []).filter((cell) => Math.floor(cell.index / cols) === Number(row)
 					&& cell.bbox && cell.bbox[2] - cell.bbox[0] >= 20 && cell.bbox[3] - cell.bbox[1] >= 40).length;
-				const overrideInfo = (settings.sheetOverrides || {})[member.id];
-				const options = Array.from({ length: rows }, (_, index) => index)
-					.filter((index) => frameCount(index) > 0)
+				const emptyFrames = frames.filter((offset) => offset === null || offset === undefined).length;
+				const options = Array.from({ length: meta.sheet.rows }, (_, index) => index)
+					.filter((index) => validFrames(index) > 0)
 					.map((index) => {
-						const anim = overrideInfo && (overrideInfo.anims || []).find((item) => item.row === index);
-						const label = anim
-							? `我的：${anim.name}（${(anim.frames || []).length} 帧）`
-							: `row ${index}（${frameCount(index)} 帧）`;
-						return h("option", { key: index, value: index }, label);
+						const item = anims.find((value) => value.row === index);
+						return h("option", { key: index, value: index },
+							item ? `我的：${item.name}（${(item.frames || []).length} 帧）` : `row ${index}（${validFrames(index)} 帧）`);
 					});
-
-				const sheetInfo = (settings.sheetOverrides || {})[member.id];
-				const officialRows = sheetInfo ? (sheetInfo.officialRows ?? 0) : 0;
-				const rowIndex = Number(current[focus]) || 0;
-				const isImportedRow = Boolean(sheetInfo) && rowIndex >= officialRows;
-				const localRow = rowIndex - officialRows;
-				const rowCells = (meta.cells || [])
-					.filter((cell) => Math.floor(cell.index / meta.sheet.columns) === rowIndex && cell.bbox
-						&& cell.bbox[2] - cell.bbox[0] >= 20 && cell.bbox[3] - cell.bbox[1] >= 40)
-					.map((cell) => cell.index);
-				const totalFrames = rowCells.length;
-
-				const moveFrame = (from, to) => {
-					if (from === to || from < 0 || to < 0) return;
-					setOrderDraft((currentOrder) => {
-						const next = currentOrder.length === totalFrames ? [...currentOrder] : Array.from({ length: totalFrames }, (_, i) => i);
-						const [item] = next.splice(from, 1);
-						next.splice(to, 0, item);
-						return next;
-					});
-				};
-
-				const saveOrder = () => {
-					if (!isImportedRow) return;
-					const sequence = orderDraft.length === totalFrames ? orderDraft : Array.from({ length: totalFrames }, (_, i) => i);
-					updateSettings((now) => {
-						const table = { ...(now.sheetOverrides || {}) };
-						const entry = table[member.id];
-						if (!entry) return now;
-						const anims = (entry.anims || []).map((anim) => (
-							anim.row === rowIndex ? { ...anim, frames: sequence } : anim
-						));
-						table[member.id] = { ...entry, anims };
-						return { ...now, sheetOverrides: table };
-					});
-				};
-
-				const removeFrame = (offset) => {
-					const base = orderDraft.length === totalFrames ? orderDraft : Array.from({ length: totalFrames }, (_, i) => i);
-					const rest = base.filter((value) => value !== offset);
-					if (isImportedRow) {
-						updateSettings((now) => {
-							const table = { ...(now.sheetOverrides || {}) };
-							const entry = table[member.id];
-							if (!entry) return now;
-							const order = Array.isArray(entry.order) ? [...entry.order] : [];
-							order[localRow] = rest;
-							const anims = (entry.anims || []).map((anim) => (anim.row === rowIndex ? { ...anim, frames: rest } : anim));
-							table[member.id] = { ...entry, order, anims };
-							return { ...now, sheetOverrides: table };
-						});
-					}
-					if (rest.length) {
-						setOrderDraft(rest);
-						setHint(`已移除 1 帧，剩 ${rest.length} 帧（点「保存顺序」生效）`);
-						return;
-					}
-					// 最后一帧：直接删掉整个动作（宿主环境不支持原生弹窗）
-
-					updateSettings((now) => {
-						const table = { ...(now.sheetOverrides || {}) };
-						const entry = table[member.id];
-						if (!entry) return now;
-						table[member.id] = {
-							...entry,
-							anims: (entry.anims || []).filter((anim) => anim.row !== rowIndex),
-						};
-						return { ...now, sheetOverrides: table };
-					});
-					setOrderDraft([]);
-					setPreviewFrame(null);
-					setHint("已删除该动作");
-				};
 
 				const setState = (state, value) => {
 					updateSettings((now) => ({
@@ -973,6 +711,105 @@
 							[member.id]: { ...(now.actionOverrides || {})[member.id], [state]: Number(value) },
 						},
 					}));
+				};
+
+				// 所有帧序列写操作都只改 anims[row].frames
+				const writeFrames = (row, list) => updateSettings((now) => {
+					const table = { ...(now.sheetOverrides || {}) };
+					const entry = table[member.id];
+					if (!entry) return now;
+					table[member.id] = {
+						...entry,
+						anims: (entry.anims || []).map((item) => (item.row === row ? { ...item, frames: list } : item)),
+					};
+					return { ...now, sheetOverrides: table };
+				});
+
+				// 删动作：同时把它从各状态的下拉框里摘掉，避免指向空行
+				const removeAnim = (row) => {
+					updateSettings((now) => {
+						const table = { ...(now.sheetOverrides || {}) };
+						const entry = table[member.id];
+						if (!entry) return now;
+						table[member.id] = { ...entry, anims: (entry.anims || []).filter((item) => item.row !== row) };
+						const acts = { ...(now.actionOverrides || {}) };
+						const own = acts[member.id];
+						if (own) {
+							const kept = {};
+							for (const [state, value] of Object.entries(own)) {
+								if (Number(value) !== row) kept[state] = value;
+							}
+							acts[member.id] = kept;
+						}
+						return { ...now, sheetOverrides: table, actionOverrides: acts };
+					});
+					setDraft(null);
+					setPreviewFrame(null);
+					setHint("已删除该动作");
+				};
+
+				const moveFrame = (from, to) => {
+					if (from === to || from < 0 || to < 0 || to >= frames.length) return;
+					const next = [...frames];
+					const [item] = next.splice(from, 1);
+					next.splice(to, 0, item);
+					setDraft({ row: rowIndex, frames: next });
+					setHint("顺序已调换，点「保存」写回");
+				};
+
+				const saveFrames = () => {
+					if (!anim) return;
+					writeFrames(rowIndex, frames);
+					setDraft(null);
+					setHint("已保存帧顺序");
+				};
+
+				const removeFrame = (position) => {
+					const rest = frames.filter((_, index) => index !== position);
+					setPreviewFrame(null);
+					setDraft(null);
+					if (!rest.length) { removeAnim(rowIndex); return; }
+					writeFrames(rowIndex, rest);
+					setHint(`已移除 1 帧，剩 ${rest.length} 帧`);
+				};
+
+				// 帧数 = 帧数组长度：多了补 null 空帧，少了截断（不动图集）
+				const setSlots = (count) => {
+					if (!anim || !(count >= 1)) return;
+					const next = frames.slice(0, count);
+					while (next.length < count) next.push(null);
+					writeFrames(rowIndex, next);
+					setDraft(null);
+					setPreviewFrame(null);
+					setHint(`帧数改为 ${count}（空帧不播放）`);
+				};
+
+				const renameAnim = (name) => {
+					if (!anim) return;
+					updateSettings((now) => {
+						const table = { ...(now.sheetOverrides || {}) };
+						const entry = table[member.id];
+						if (!entry) return now;
+						table[member.id] = {
+							...entry,
+							anims: (entry.anims || []).map((item) => (item.row === rowIndex ? { ...item, name } : item)),
+						};
+						return { ...now, sheetOverrides: table };
+					});
+				};
+
+				const confirmSheet = () => {
+					updateSettings((now) => {
+						const sheets = { ...(now.sheetOverrides || {}) };
+						const acts = { ...(now.actionOverrides || {}) };
+						delete sheets[member.id];
+						delete acts[member.id];
+						return { ...now, sheetOverrides: sheets, actionOverrides: acts };
+					});
+					setDraft(null);
+					setPreviewFrame(null);
+					setHint(confirmKind === "delete" ? "已删除该角色的导入图集" : "已恢复官方图集");
+					setConfirmKind(null);
 				};
 
 				return h("div", { className: "konp-dev-card" },
@@ -986,11 +823,15 @@
 						h("button", {
 							className: "konp-set-btn",
 							type: "button",
-							onClick: () => updateSettings((now) => {
-								const next = { ...(now.actionOverrides || {}) };
-								delete next[member.id];
-								return { ...now, actionOverrides: next };
-							}),
+							onClick: () => {
+								updateSettings((now) => {
+									const next = { ...(now.actionOverrides || {}) };
+									delete next[member.id];
+									return { ...now, actionOverrides: next };
+								});
+								setDraft(null);
+								setPreviewFrame(null);
+							},
 						}, "复位"),
 					),
 					open ? h("div", { className: "konp-dev-body" },
@@ -1000,22 +841,37 @@
 								h("select", {
 									value: Number(current[state] ?? 0),
 									onFocus: () => setFocus(state),
-									onChange: (event) => { setFocus(state); setState(state, event.target.value); },
+									onChange: (event) => {
+										setFocus(state);
+										setState(state, event.target.value);
+										setDraft(null);
+										setPreviewFrame(null);
+									},
 								}, options),
 							)),
 						),
-						h("div", { className: "konp-dev-main" },
-						h("div", { className: "konp-dev-preview" },
-							h("canvas", { ref: canvasRef, width: 144, height: 144 }),
-							h("small", null, `${focus} · row ${current[focus] ?? 0}`),
+						h("div", { className: "konp-dev-name" },
+							h("span", null, "名称"),
+							h("input", {
+								type: "text",
+								value: anim ? anim.name : "",
+								maxLength: 40,
+								disabled: !anim,
+								placeholder: anim ? "给这个动作起个名字" : (isImportedRow ? "这一行没有动作" : "官方动作（只读）"),
+								onChange: (event) => renameAnim(event.target.value),
+							}),
 						),
-						isImportedRow ? h("div", { className: "konp-dev-order" },
-							h("small", null, "帧顺序（拖动方块调换）"),
-							h("div", { className: "konp-dev-orderlist" },
-								...(orderDraft.length === totalFrames ? orderDraft : Array.from({ length: totalFrames }, (_, i) => i))
-									.map((offset, position) => h("div", {
-										key: `${position}-${offset}`,
-										className: `konp-dev-frame${previewFrame === offset ? " active" : ""}`,
+						h("div", { className: "konp-dev-main" },
+							h("div", { className: "konp-dev-preview" },
+								h("canvas", { ref: canvasRef, width: 144, height: 144 }),
+								h("small", null, anim ? `${focus} · ${anim.name}（${frames.length} 帧${emptyFrames ? ` · ${emptyFrames} 空` : ""}）` : `${focus} · row ${rowIndex}`),
+							),
+							anim ? h("div", { className: "konp-dev-order" },
+								h("small", null, "帧顺序（拖动方块调换，✕ 删帧）"),
+								h("div", { className: "konp-dev-orderlist" },
+									...frames.map((offset, position) => h("div", {
+										key: position,
+										className: `konp-dev-frame${previewFrame === position ? " active" : ""}${offset === null ? " is-empty" : ""}`,
 										draggable: true,
 										onDragStart: (event) => event.dataTransfer.setData("text/plain", String(position)),
 										onDragOver: (event) => event.preventDefault(),
@@ -1023,47 +879,61 @@
 											event.preventDefault();
 											moveFrame(Number(event.dataTransfer.getData("text/plain")), position);
 										},
-										onClick: () => setPreviewFrame(offset),
+										onClick: () => setPreviewFrame((value) => (value === position ? null : position)),
 									},
 									h("canvas", {
 										width: 48,
 										height: 48,
-										ref: (el) => { if (el) frameRefs.current.set(position, el); },
+										ref: (el) => {
+											if (el) frameRefs.current.set(position, el);
+											else frameRefs.current.delete(position);
+										},
 									}),
-									h("span", null, `帧 ${offset + 1}`),
+									h("span", null, offset === null ? "空" : `帧 ${position + 1}`),
 									h("button", {
 										className: "konp-dev-frame-del",
 										type: "button",
 										onClick: (event) => {
 											event.stopPropagation();
-											removeFrame(offset);
+											removeFrame(position);
 										},
-									}, "✕"),
-									)),
+									}, "✕"))),
 								),
 								h("div", { className: "konp-set-actions" },
-									h("button", { className: "konp-set-btn", type: "button", onClick: saveOrder }, "保存"),
-									h("button", {
-										className: "konp-set-btn",
-										type: "button",
-										onClick: () => {
-											updateSettings((now) => {
-												const table = { ...(now.sheetOverrides || {}) };
-												const entry = table[member.id];
-												if (!entry) return now;
-												table[member.id] = { ...entry, anims: (entry.anims || []).filter((anim) => anim.row !== rowIndex) };
-												return { ...now, sheetOverrides: table };
-											});
-											setOrderDraft([]);
-											setPreviewFrame(null);
-										},
-									}, "删除动作"),
-
+									h("select", {
+										value: frames.length,
+										"aria-label": "帧数",
+										onChange: (event) => setSlots(Number(event.target.value)),
+										style: { borderRadius: "8px", padding: "4px 6px" },
+									}, ...Array.from({ length: cols }, (_, index) => index + 1)
+										.map((count) => h("option", { key: count, value: count }, `帧数：${count}`))),
+									h("button", { className: "konp-set-btn", type: "button", onClick: saveFrames }, "保存"),
+									h("button", { className: "konp-set-btn", type: "button", onClick: () => removeAnim(rowIndex) }, "删除动作"),
+									draft && draft.row === rowIndex ? h("small", { className: "konp-dev-hint" }, "有未保存的调整") : null,
 								),
 							) : null,
 						),
+						h(DevSheetImport, {
+							member,
+							settings,
+							updateSettings,
+							setHint,
+							onAdded: (row) => {
+								setState(focus, row);
+								setDraft(null);
+								setPreviewFrame(null);
+							},
+							onRestore: () => setConfirmKind("restore"),
+							onDelete: () => setConfirmKind("delete"),
+						}),
+						confirmKind ? h("div", { className: "konp-dev-sheet-row" },
+							h("small", null, confirmKind === "delete" ? "确认删除整个导入图集？" : "确认恢复官方图集？"),
+							h("button", { className: "konp-set-btn", type: "button", onClick: confirmSheet }, "确认"),
+							h("button", { className: "konp-set-btn", type: "button", onClick: () => setConfirmKind(null) }, "取消"),
+						) : null,
+						hint ? h("small", { className: "konp-dev-hint" }, hint) : null,
+						h("small", { className: "konp-dev-hint" }, `支持 PNG / JPG / WebP · 一个动作最多 ${cols} 帧`),
 					) : null,
-					open ? h(DevSheetImport, { member, settings, updateSettings, focusedRow: rowIndex }) : null,
 				);
 			}
 

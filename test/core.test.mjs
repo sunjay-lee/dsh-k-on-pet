@@ -213,6 +213,25 @@ test("stepWalk moves along the plan in any direction", () => {
 	assert.ok(Math.abs(b.y - 31) < 1e-9);
 });
 
+test("sheetOverrides 保留 anims 的帧序列（null 空帧不丢，越界偏移当空帧）", () => {
+	const sheet = {
+		src: "data:image/png;base64,AAAA",
+		cols: 6,
+		rows: 8,
+		officialRows: 7,
+		anims: [
+			{ name: "挥手", row: 7, rows: 1, frames: [0, 2, 3, null, null, 6] },
+			{ name: "越界", row: 8, rows: 1, frames: [0, 9, -1, 2] },
+		],
+	};
+	const clean = Core.normalizeSettings({ sheetOverrides: { yui: sheet } }).sheetOverrides.yui;
+	assert.equal(clean.anims.length, 2);
+	assert.equal(clean.anims[0].name, "挥手");
+	assert.deepEqual(clean.anims[0].frames, [0, 2, 3, null, null, null], "空帧留 null，越界偏移当空帧");
+	assert.deepEqual(clean.anims[1].frames, [0, null, null, 2]);
+	assert.deepEqual(Core.normalizeSettings({ sheetOverrides: { yui: { ...sheet, src: "http://x/a.png" } } }).sheetOverrides, {});
+});
+
 test("wrapPosition 从对侧内侧出现（不会在屏幕外滑行）", () => {
 	const vw = 800, vh = 600, size = 96;
 	const bottom = Core.wrapPosition(10, vh + 10, size, vw, vh);
