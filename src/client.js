@@ -1679,27 +1679,36 @@
 						if (!asset) return;
 						engine.watchCooldownUntil = now + 90000;
 						say(pickLang(EGG_LINES.pair, current.lang), 4200);
-						// 挑离自己近的那一个凑过去，借用「追到为止」的跟随逻辑
+						// 围观站位：站到两人外侧、隔开约 1.8 个身位，而且从自己这一侧过去，
+						// 不从他们身上穿过去，也不贴着人家站。
 						const ids = [event.a, event.b].filter((id) => id !== member.id && PEERS.has(id));
 						if (!ids.length) return;
-						const near = ids.sort((left, right) => {
-							const a = PEERS.get(left);
-							const b = PEERS.get(right);
-							return Math.hypot(a.x - posRef.current.x, a.y - posRef.current.y)
-								- Math.hypot(b.x - posRef.current.x, b.y - posRef.current.y);
-						})[0];
-						const peer = PEERS.get(near);
-						const to = Core.planWalkTo(posRef.current.x, posRef.current.y, peer.x, peer.y);
-						if (!to) return;
-						engine.watching = true;
-						engine.followTarget = near;
-						engine.followDeadline = now + 9000;
+						const spots = ids.map((id) => PEERS.get(id));
+						const left = Math.min(...spots.map((spot) => spot.x));
+						const right = Math.max(...spots.map((spot) => spot.x));
+						const rowY = spots.reduce((sum, spot) => sum + spot.y, 0) / spots.length;
+						const actorSize = Math.round(CELL * current.scale);
+						const gap = Math.round(actorSize * 1.8);
+						const limit = Core.boundsFor(window.innerWidth, window.innerHeight, actorSize);
+						const leftSpot = left - gap;
+						const rightSpot = right + gap;
+						let watchX = posRef.current.x <= (left + right) / 2 ? leftSpot : rightSpot;
+						if (watchX < 2 || watchX > limit.maxX) {
+							watchX = watchX === leftSpot ? rightSpot : leftSpot;
+						}
+						const watch = {
+							x: Core.clamp(watchX, 2, limit.maxX),
+							y: Core.clamp(rowY, 2, limit.maxY),
+						};
+						const to = Core.planWalkTo(posRef.current.x, posRef.current.y, watch.x, watch.y);
+						if (!to || to.distance < 8) return;
+						engine.followTarget = null;
 						engine.mode = "walk";
 						engine.walkElapsed = 0;
 						engine.walkPlan = {
 							dx: to.dx,
 							dy: to.dy,
-							duration: Math.max(800, Math.min(6000, (to.distance / Math.max(30, current.speed * current.scale)) * 1000)),
+							duration: Math.max(200, Math.min(6000, (to.distance / Math.max(30, current.speed * current.scale)) * 1000)),
 						};
 						engine.dir = to.dx < 0 ? -1 : 1;
 						engine.clip = "walk";
@@ -1997,7 +2006,6 @@
 								if (!peer || now > engine.followDeadline) {
 									if (engine.followTarget) FREEZE.delete(engine.followTarget);
 									engine.followTarget = null;
-									engine.watching = false;
 									arrived = true;
 								} else {
 									const dy = peer.y - posRef.current.y;
@@ -2017,15 +2025,12 @@
 										engine.followTarget = null;
 										arrived = true;
 										// 追上 = 并肩站住：记一次「成对」，两人一起停 4 秒
-										if (!engine.watching) {
-											EGG.pair(member.id, partner, now, {
-												x: (posRef.current.x + peer.x) / 2,
-												y: (posRef.current.y + peer.y) / 2,
-											});
-											engine.pairUntil = now + 4000;
-											FREEZE.set(partner, now + 4000);
-										}
-										engine.watching = false;
+										EGG.pair(member.id, partner, now, {
+											x: (posRef.current.x + peer.x) / 2,
+											y: (posRef.current.y + peer.y) / 2,
+										});
+										engine.pairUntil = now + 4000;
+										FREEZE.set(partner, now + 4000);
 									}
 									if (!arrived) engine.walkPlan = plan;
 								}
