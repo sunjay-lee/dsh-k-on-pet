@@ -145,6 +145,7 @@
 			// 随机跟随：律跟澪、唯跟梓；䌷在大家都待久了时跟其中一队
 			follow: true,
 			followChance: 80, // 跟随概率（百分比）
+			teaPartyChance: 100, // 听到"带了蛋糕"时开茶会的概率（百分比）
 		};
 	}
 
@@ -200,10 +201,11 @@
 			seats,
 			returnAfter: Number.isFinite(Number(source.returnAfter)) ? clamp(Number(source.returnAfter), 0, 60) : 5,
 			speed: Number.isFinite(Number(source.speed)) ? clamp(Number(source.speed), 30, 300) : 96,
-			idleSeconds: Number.isFinite(Number(source.idleSeconds)) ? clamp(Number(source.idleSeconds), 1, 30) : 4,
-			walkSeconds: Number.isFinite(Number(source.walkSeconds)) ? clamp(Number(source.walkSeconds), 1, 12) : 3,
+			idleSeconds: Number.isFinite(Number(source.idleSeconds)) ? clamp(Number(source.idleSeconds), 1, 120) : 4,
+			walkSeconds: Number.isFinite(Number(source.walkSeconds)) ? clamp(Number(source.walkSeconds), 1, 60) : 3,
 			follow: source.follow !== false,
 			followChance: Number.isFinite(Number(source.followChance)) ? clamp(Number(source.followChance), 0, 100) : 80,
+			teaPartyChance: Number.isFinite(Number(source.teaPartyChance)) ? clamp(Number(source.teaPartyChance), 0, 100) : 100,
 		};
 	}
 

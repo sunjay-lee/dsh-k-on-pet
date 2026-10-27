@@ -183,10 +183,11 @@ test("speed / idle / walk / follow 有默认值且被钳制", () => {
 	assert.equal(Core.normalizeSettings({ speed: 999 }).speed, 300);
 	assert.equal(Core.normalizeSettings({ speed: 10 }).speed, 30);
 	assert.equal(Core.normalizeSettings({ idleSeconds: 0 }).idleSeconds, 1);
-	assert.equal(Core.normalizeSettings({ walkSeconds: 99 }).walkSeconds, 12);
+	assert.equal(Core.normalizeSettings({ walkSeconds: 99 }).walkSeconds, 60);
 	assert.equal(Core.normalizeSettings({ follow: false }).follow, false);
 	assert.equal(Core.normalizeSettings({ followChance: 150 }).followChance, 100);
 	assert.equal(Core.normalizeSettings({ followChance: -5 }).followChance, 0);
+	assert.equal(Core.normalizeSettings({ teaPartyChance: 150 }).teaPartyChance, 100);
 });
 
 test("planWalk returns a unit direction and a positive duration", () => {
