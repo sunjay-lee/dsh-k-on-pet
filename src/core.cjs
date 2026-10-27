@@ -131,6 +131,12 @@
 
 	const TEMPO = { yui: 1.25, mio: 0.9, ritsu: 0.7, tsumugi: 1.45, azusa: 1.05 };
 
+	// 彩蛋台词：䌷看到别人并肩时的感叹，以及开茶会前的一句（按设置的语言显示）
+	const EGG_LINES = {
+		pair: { ja: "女の子同士っていいなって思うの", zh: "只是觉得女孩子们之间真是好呀" },
+		tea: { ja: "みなさん、お茶会をしましょうか", zh: "我们开个茶会吧" },
+	};
+
 	const CARE_LINES = [
 		"已经坐了很久啦，起来活动一下吧～",
 		"喝口水，看看远处，休息一下眼睛。",
@@ -548,6 +554,7 @@
 		CARE_LINES,
 		TEMPO,
 		FOLLOW_LINES,
+		EGG_LINES,
 		CLIP_FPS,
 		rand,
 		pick,

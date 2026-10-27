@@ -32,16 +32,48 @@
 				LINES,
 				CARE_LINES,
 				CLIP_FPS,
+				EGG_LINES,
 			} = Core;
 			const normalizeSettings = Core.normalizeSettings;
 			// 各角色实时位置：供「跟随」行为读取，避免引入全局状态管理。
 			const PEERS = new Map();
-			// 谁跟着谁：律跟澪、唯跟梓（"喵"=梓）；䌷在大家都待久了时随机跟一队。
+			// 谁跟着谁：律跟澪、唯跟梓（"喵"=梓）；䌷在旁边看别人成对。
 			const FOLLOW_TARGET = { ritsu: "mio", yui: "azusa" };
 			// 反向追逐：偶尔换成被追的人反过来追（随机出现，不提供设置）
 			const REVERSE_TARGET = { mio: "ritsu", azusa: "yui" };
 			// 被追的人先“愣住”不动，等追的人跑过来（id -> 解冻时间）
 			const FREEZE = new Map();
+			// 彩蛋事件总线：追上 → 成对 → 䌷的感叹 → 两对一起 → 茶会。
+			// 放在模块作用域里，让各个角色和设置页能互相通知，不用引入全局状态库。
+			const EGG = {
+				pairs: new Map(), // "a|b" -> { a, b, at }
+				listeners: new Set(),
+				demoUntil: 0, // 「演示一次跟随」的强制窗口
+				on(listener) {
+					this.listeners.add(listener);
+					return () => this.listeners.delete(listener);
+				},
+				emit(event) {
+					for (const listener of this.listeners) {
+						try { listener(event); } catch { /* 单个监听失败不影响别人 */ }
+					}
+				},
+				pair(a, b, at, pos) {
+					const key = [a, b].sort().join("|");
+					const old = this.pairs.get(key);
+					if (old && at - old.at < 6000) return;
+					this.pairs.set(key, { a, b, at, x: pos.x, y: pos.y });
+					this.emit({ type: "pair", a, b, x: pos.x, y: pos.y, key });
+				},
+				// 最近 ms 毫秒内成对的组合（顺便清掉过期记录）
+				recentPairs(ms, now = performance.now()) {
+					for (const [key, pair] of this.pairs) {
+						if (now - pair.at > ms) this.pairs.delete(key);
+					}
+					return [...this.pairs.values()];
+				},
+			};
+			const pairKey = (a, b) => [a, b].sort().join("|");
 			// 按设置挑选台词语言：zh 中文 / ja 日文 / both 双语
 			const pickLang = (entry, lang) => {
 				if (!entry) return "";
@@ -956,6 +988,7 @@
 				const count = ROSTER.filter((member) => settings.visible[member.id]).length;
 				const fileRef = useRef(null);
 				const [notice, setNotice] = useState("");
+				const [eggNotice, setEggNotice] = useState("");
 				const [, setPaint] = useState(0);
 
 				// DSH 首次挂载设置分区时，槽位容器尺寸/主题变量可能还没稳定；
@@ -1264,7 +1297,7 @@
 						h("div", { className: "konp-set-row" },
 							h("div", { className: "konp-set-name" },
 								h("b", null, "茶会彩蛋概率"),
-								h("small", null, "䌷说到「带了蛋糕」或连点她 15 次时开茶会"),
+								h("small", null, "䌷说到「带了蛋糕」或连点她 15 次时开茶会；两对并肩时必定开，不看这个概率"),
 							),
 							h("input", {
 								className: "konp-range",
@@ -1278,6 +1311,36 @@
 							}),
 							h("span", { className: "konp-set-value" }, `${settings.teaPartyChance}%`),
 						)] : []),
+						h("div", { className: "konp-set-actions" },
+							h("button", {
+								className: "konp-set-btn",
+								type: "button",
+								onClick: () => {
+									EGG.demoUntil = performance.now() + 12000;
+									setEggNotice("已安排：12 秒内让律/唯追一次（需要她能追的角色在屏幕上）");
+								},
+							}, "演示一次跟随"),
+							h("button", {
+								className: "konp-set-btn",
+								type: "button",
+								onClick: () => {
+									EGG.emit({ type: "teaNow" });
+									setEggNotice("已让䌷去开茶会");
+								},
+							}, "现在开茶会"),
+						),
+						h("p", { className: "konp-set-note" },
+							"触发条件：",
+							h("br"),
+							"· 跟随：待机结束时按概率追一次（律→澪、唯→梓，偶有反向）；追上后两人并肩站 4 秒。",
+							h("br"),
+							"· 䌷的感叹：看到任意一对并肩，会说「只是觉得女孩子们之间真是好呀」再凑过去。",
+							h("br"),
+							"· 茶会：两对同时并肩 / 䌷聊到「带了蛋糕」/ 连点她 15 次。",
+							settings.follow ? null : h("br"),
+							settings.follow ? null : "（彩蛋总开关现在是关的，以上都不会自己发生）",
+						),
+						eggNotice ? h("p", { className: "konp-set-note", role: "status" }, eggNotice) : null,
 					),
 					h(DevBoundary, null, h("section", { className: "konp-set-card" },
 						h("div", { className: "konp-set-head" }, h("strong", null, "开发者模式")),
@@ -1557,16 +1620,16 @@
 					say("❤", 2600);
 				}, [say, setClipRow]);
 
-				// 下一段走向：优先跟随（律→澪、唯→梓、䌷→某一队），否则随机方向。
+				// 下一段走向：优先跟随（律→澪、唯→梓），否则随机方向。䌷的彩蛋是"围观成对"。
 				const planNextMove = useCallback((engine, now) => {
 					const current = settingsRef.current;
 					const speed = Math.max(30, current.speed) * current.scale;
 					const base = current.walkSeconds * 1000 * tempo * (0.8 + Math.random() * 0.5);
-					const tryFollow = (leaderId, maxDist, chance) => {
+					const tryFollow = (leaderId, maxDist, chance, minDist = 120) => {
 						const peer = PEERS.get(leaderId);
 						if (!peer) return null;
 						const to = Core.planWalkTo(posRef.current.x, posRef.current.y, peer.x, peer.y);
-						if (!to || to.distance < 120 || to.distance > maxDist) return null;
+						if (!to || to.distance < minDist || to.distance > maxDist) return null;
 						if (Math.random() > chance) return null;
 						return {
 							dx: to.dx,
@@ -1575,39 +1638,75 @@
 						};
 					};
 					if (current.follow) {
-						const chance = current.followChance / 100;
-						// 反向追逐：被追的人偶尔反过来追，随机出现
+						// 「演示一次跟随」的窗口内：不看概率和距离，直接让律/唯追一次
+						const demo = now < EGG.demoUntil;
+						const chance = demo ? 1 : current.followChance / 100;
+						// 反向追逐：被追的人偶尔反过来追（随机出现，不提供设置）
 						const leaderId = FOLLOW_TARGET[member.id]
-							|| (REVERSE_TARGET[member.id] && Math.random() < 0.35 ? REVERSE_TARGET[member.id] : null);
+							|| (REVERSE_TARGET[member.id] && Math.random() < 0.2 ? REVERSE_TARGET[member.id] : null);
 						if (leaderId) {
-							const followed = tryFollow(leaderId, 900, chance);
+							const followed = tryFollow(leaderId, demo ? 1600 : 900, chance, demo ? 0 : 120);
 							if (followed) {
 								followed.follow = leaderId;
-								FREEZE.set(leaderId, performance.now() + 8000);
+								FREEZE.set(leaderId, now + 8000);
 								const shout = Core.pick(Core.FOLLOW_LINES[member.id] || []);
 								if (shout) say(pickLang(shout, current.lang), 2600);
 								return followed;
-							}
-						} else if (member.id === "tsumugi") {
-							// 两对都待久了、且自己在附近 → 随机跟其中一队
-							const idleLong = ["mio", "azusa"].filter((id) => {
-								const peer = PEERS.get(id);
-								return peer && now - peer.movedAt > 5000;
-							});
-							if (idleLong.length) {
-								const leader = Core.pick(idleLong);
-								const followed = tryFollow(leader, 600, chance * 0.75);
-								if (followed) {
-									followed.follow = leader;
-									const shout = Core.pick(Core.FOLLOW_LINES.tsumugi || []);
-									if (shout) say(pickLang(shout, current.lang), 2600);
-									return followed;
-								}
 							}
 						}
 					}
 					const random = Core.planWalk(posRef.current.x, posRef.current.y, null, current.scale);
 					return { dx: random.dx, dy: random.dy, duration: base };
+				}, [member.id, say]);
+
+				// 彩蛋联动：任何人成对时，䌷感叹一句再凑过去围观（她自己的追逐逻辑由成对事件驱动）
+				useEffect(() => {
+					if (member.id !== "tsumugi") return undefined;
+					return EGG.on((event) => {
+						const engine = engineRef.current;
+						const current = settingsRef.current;
+						if (!engine || !current.follow) return;
+						if (event.type === "tea") {
+							say(pickLang(EGG_LINES.tea, current.lang), 3000);
+							return;
+						}
+						if (event.type !== "pair") return;
+						if (event.a === member.id || event.b === member.id) return;
+						const now = performance.now();
+						if (now < (engine.watchCooldownUntil || 0)) return;
+						if (engine.mode === "drag" || engine.mode === "throw" || engine.mode === "return") return;
+						const asset = assetRef.current;
+						if (!asset) return;
+						engine.watchCooldownUntil = now + 90000;
+						say(pickLang(EGG_LINES.pair, current.lang), 4200);
+						// 挑离自己近的那一个凑过去，借用「追到为止」的跟随逻辑
+						const ids = [event.a, event.b].filter((id) => id !== member.id && PEERS.has(id));
+						if (!ids.length) return;
+						const near = ids.sort((left, right) => {
+							const a = PEERS.get(left);
+							const b = PEERS.get(right);
+							return Math.hypot(a.x - posRef.current.x, a.y - posRef.current.y)
+								- Math.hypot(b.x - posRef.current.x, b.y - posRef.current.y);
+						})[0];
+						const peer = PEERS.get(near);
+						const to = Core.planWalkTo(posRef.current.x, posRef.current.y, peer.x, peer.y);
+						if (!to) return;
+						engine.watching = true;
+						engine.followTarget = near;
+						engine.followDeadline = now + 9000;
+						engine.mode = "walk";
+						engine.walkElapsed = 0;
+						engine.walkPlan = {
+							dx: to.dx,
+							dy: to.dy,
+							duration: Math.max(800, Math.min(6000, (to.distance / Math.max(30, current.speed * current.scale)) * 1000)),
+						};
+						engine.dir = to.dx < 0 ? -1 : 1;
+						engine.clip = "walk";
+						engine.frames = walkFrames(asset.meta, engine.dir, current.facingFlipped);
+						engine.frame = 0;
+						engine.acc = 0;
+					});
 				}, [member.id, say]);
 
 				// 初始位置：恢复该角色上次位置，否则按当前可见数量排在右下角。
@@ -1898,6 +1997,7 @@
 								if (!peer || now > engine.followDeadline) {
 									if (engine.followTarget) FREEZE.delete(engine.followTarget);
 									engine.followTarget = null;
+									engine.watching = false;
 									arrived = true;
 								} else {
 									const dy = peer.y - posRef.current.y;
@@ -1912,9 +2012,20 @@
 										// 太近了往后退一点，别贴脸
 										plan = { dx: dx > 0 ? -1 : 1, dy: 0, duration: Number.POSITIVE_INFINITY };
 									} else {
-										FREEZE.delete(engine.followTarget);
+										const partner = engine.followTarget;
+										FREEZE.delete(partner);
 										engine.followTarget = null;
 										arrived = true;
+										// 追上 = 并肩站住：记一次「成对」，两人一起停 4 秒
+										if (!engine.watching) {
+											EGG.pair(member.id, partner, now, {
+												x: (posRef.current.x + peer.x) / 2,
+												y: (posRef.current.y + peer.y) / 2,
+											});
+											engine.pairUntil = now + 4000;
+											FREEZE.set(partner, now + 4000);
+										}
+										engine.watching = false;
 									}
 									if (!arrived) engine.walkPlan = plan;
 								}
@@ -1923,7 +2034,11 @@
 								settle();
 								setClip(engine, "stand", "idle");
 								engine.nextClipAt = now + 5000 + Math.random() * 6000;
-								engine.nextWalkAt = now + current.idleSeconds * 1000 * tempo * (0.6 + Math.random() * 0.8);
+								// 成对时并肩多站一会儿，别刚凑上就走开
+								engine.nextWalkAt = Math.max(
+									now + current.idleSeconds * 1000 * tempo * (0.6 + Math.random() * 0.8),
+									engine.pairUntil || 0,
+								);
 								savePosition();
 							} else {
 								const moved = Core.stepWalk(posRef.current, plan, current.speed * current.scale, dt);
@@ -2746,14 +2861,17 @@
 					});
 				}, [settings.table, settings.seats]);
 
-				// 彩蛋：䌷说"我带了蛋糕"时，把茶桌摆到右下角，她先入座，其余人依次坐下。
+				// 彩蛋：茶会。三个入口——两对同时并肩（联动）、䌷聊到「带了蛋糕」、连点她 15 次。
 				const teaTimers = useRef([]);
 				const teaRunning = useRef(false);
-				const startTeaParty = useCallback(() => {
+				const startTeaParty = useCallback((options = {}) => {
+					const force = Boolean(options && options.force);
 					if (teaRunning.current) return;
-					if (!settings.follow) return; // 「启用彩蛋」总开关
-					const chance = settings.teaPartyChance ?? 100;
-					if (Math.random() * 100 > chance) return;
+					if (!settings.follow && !force) return; // 「启用彩蛋」总开关（强制调用除外）
+					if (!force) {
+						const chance = settings.teaPartyChance ?? 100;
+						if (Math.random() * 100 > chance) return;
+					}
 					teaRunning.current = true;
 					const scale = settings.scale;
 					const pos = {
@@ -2781,6 +2899,28 @@
 					teaTimers.current.forEach((timer) => clearTimeout(timer));
 					teaTimers.current = [];
 				}, []);
+
+				// 两对同时并肩 → 茶会（联动）：先让䌷说「我们开个茶会吧」，再开
+				const teaCooldown = useRef(0);
+				const teaDelay = useRef(0);
+				useEffect(() => EGG.on((event) => {
+					if (event.type === "teaNow") {
+						window.clearTimeout(teaDelay.current);
+						EGG.emit({ type: "tea" });
+						teaDelay.current = window.setTimeout(() => startTeaParty({ force: true }), 600);
+						return;
+					}
+					if (event.type !== "pair") return;
+					const now = performance.now();
+					if (now < teaCooldown.current) return;
+					const keys = EGG.recentPairs(6000, now).map((pair) => pairKey(pair.a, pair.b));
+					if (!(keys.includes("mio|ritsu") && keys.includes("azusa|yui"))) return;
+					teaCooldown.current = now + 5 * 60 * 1000;
+					EGG.emit({ type: "tea" });
+					window.clearTimeout(teaDelay.current);
+					teaDelay.current = window.setTimeout(() => startTeaParty({ force: true }), 1400);
+				}), [startTeaParty]);
+				useEffect(() => () => window.clearTimeout(teaDelay.current), []);
 
 				useEffect(() => {
 					const onResize = () => setTablePos((current) => Core.clampTablePosition(
