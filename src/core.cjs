@@ -102,6 +102,24 @@
 
 	// 每个角色的"节奏"：待机/行走时长会乘以这个系数，避免五个人同步行动。
 	// 唯有点慢、律很急、䌷最悠闲。
+	// 跟随触发时追逐者的台词（日文/中文双语，按设置切换）
+	const FOLLOW_LINES = {
+		ritsu: [
+			{ ja: "澪ー！待ってよー！", zh: "澪——！等等我呀——！" },
+			{ ja: "澪、置いてかないでよ！", zh: "澪，别丢下我呀！" },
+			{ ja: "捕まえた、澪！", zh: "抓到你了，澪！" },
+		],
+		yui: [
+			{ ja: "あずにゃーん！", zh: "梓喵——！" },
+			{ ja: "あずにゃん、待ってー！", zh: "梓喵，等等我——！" },
+			{ ja: "あずにゃんと遊びたいなー", zh: "好想和梓喵玩呀～" },
+		],
+		tsumugi: [
+			{ ja: "私も行きますわ～", zh: "我也要去～" },
+			{ ja: "みなさん、待ってくださいな～", zh: "大家，请等等我呀～" },
+		],
+	};
+
 	const TEMPO = { yui: 1.25, mio: 0.9, ritsu: 0.7, tsumugi: 1.45, azusa: 1.05 };
 
 	const CARE_LINES = [
@@ -150,6 +168,8 @@
 			follow: true,
 			followChance: 80, // 跟随概率（百分比）
 			teaPartyChance: 100, // 听到"带了蛋糕"时开茶会的概率（百分比）
+			// 台词语言：zh 中文 / ja 日文 / both 双语
+			lang: "zh",
 		};
 	}
 
@@ -210,6 +230,7 @@
 			follow: source.follow !== false,
 			followChance: Number.isFinite(Number(source.followChance)) ? clamp(Number(source.followChance), 0, 100) : 80,
 			teaPartyChance: Number.isFinite(Number(source.teaPartyChance)) ? clamp(Number(source.teaPartyChance), 0, 100) : 100,
+			lang: ["zh", "ja", "both"].includes(source.lang) ? source.lang : "zh",
 		};
 	}
 
@@ -440,6 +461,7 @@
 		LINES,
 		CARE_LINES,
 		TEMPO,
+		FOLLOW_LINES,
 		CLIP_FPS,
 		rand,
 		pick,

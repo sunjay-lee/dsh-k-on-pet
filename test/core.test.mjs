@@ -188,6 +188,10 @@ test("speed / idle / walk / follow 有默认值且被钳制", () => {
 	assert.equal(Core.normalizeSettings({ followChance: 150 }).followChance, 100);
 	assert.equal(Core.normalizeSettings({ followChance: -5 }).followChance, 0);
 	assert.equal(Core.normalizeSettings({ teaPartyChance: 150 }).teaPartyChance, 100);
+	assert.equal(Core.normalizeSettings({}).lang, "zh");
+	assert.equal(Core.normalizeSettings({ lang: "ja" }).lang, "ja");
+	assert.equal(Core.normalizeSettings({ lang: "both" }).lang, "both");
+	assert.equal(Core.normalizeSettings({ lang: "en" }).lang, "zh");
 });
 
 test("planWalk returns a unit direction and a positive duration", () => {

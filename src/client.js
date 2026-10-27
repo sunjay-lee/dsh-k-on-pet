@@ -38,6 +38,13 @@
 			const PEERS = new Map();
 			// 谁跟着谁：律跟澪、唯跟梓（"喵"=梓）；䌷在大家都待久了时随机跟一队。
 			const FOLLOW_TARGET = { ritsu: "mio", yui: "azusa" };
+			// 按设置挑选台词语言：zh 中文 / ja 日文 / both 双语
+			const pickLang = (entry, lang) => {
+				if (!entry) return "";
+				if (lang === "ja") return entry.ja || entry.zh || "";
+				if (lang === "both") return [entry.ja, entry.zh].filter(Boolean).join("\n");
+				return entry.zh || entry.ja || "";
+			};
 			const tableDefaultPosition = Core.tableDefaultPosition;
 			const clampTablePosition = Core.clampTablePosition;
 			const tableSeatAt = Core.tableSeatAt;
@@ -589,6 +596,22 @@
 						),
 						h("div", { className: "konp-set-row" },
 							h("div", { className: "konp-set-name" },
+								h("b", null, "台词语言"),
+								h("small", null, "跟随台词与语音字幕的显示语言"),
+							),
+							h("div", { className: "konp-set-actions" },
+								...[["zh", "中文"], ["ja", "日文"], ["both", "双语"]].map(([value, label]) => h("button", {
+									key: value,
+									className: "konp-set-btn",
+									type: "button",
+									"aria-pressed": settings.lang === value,
+									style: settings.lang === value ? { borderColor: "rgba(127,127,127,.55)" } : null,
+									onClick: () => updateSettings({ lang: value }),
+								}, label)),
+							),
+						),
+						h("div", { className: "konp-set-row" },
+							h("div", { className: "konp-set-name" },
 								h("b", null, "茶会彩蛋概率"),
 								h("small", null, "䌷说到「带了蛋糕」或连点她 15 次时开茶会"),
 							),
@@ -861,7 +884,7 @@
 					// 气泡跟随实际播放的那条语音（meta.lines 里是逐条的日文/中文），没有就用音符。
 					const file = useVoice ? playVoice(current.meta) : "";
 					const line = file && current.meta.lines ? current.meta.lines[file] : null;
-					say((line && line.zh) || "♪", 2600);
+					say((line && pickLang(line, current.lang)) || "♪", 2600);
 				}, [playVoice, say, setClipRow]);
 
 				const triggerClick = useCallback(() => reactNow(true), [reactNow]);
@@ -905,7 +928,11 @@
 						const leaderId = FOLLOW_TARGET[member.id];
 						if (leaderId) {
 							const followed = tryFollow(leaderId, 900, chance);
-							if (followed) return followed;
+							if (followed) {
+								const shout = Core.pick(Core.FOLLOW_LINES[member.id] || []);
+								if (shout) say(pickLang(shout, current.lang), 2600);
+								return followed;
+							}
 						} else if (member.id === "tsumugi") {
 							// 两对都待久了、且自己在附近 → 随机跟其中一队
 							const idleLong = ["mio", "azusa"].filter((id) => {
@@ -914,13 +941,17 @@
 							});
 							if (idleLong.length) {
 								const followed = tryFollow(Core.pick(idleLong), 600, chance * 0.75);
-								if (followed) return followed;
+								if (followed) {
+									const shout = Core.pick(Core.FOLLOW_LINES.tsumugi || []);
+									if (shout) say(pickLang(shout, current.lang), 2600);
+									return followed;
+								}
 							}
 						}
 					}
 					const random = Core.planWalk(posRef.current.x, posRef.current.y, null, current.scale);
 					return { dx: random.dx, dy: random.dy, duration: base };
-				}, [member.id]);
+				}, [member.id, say]);
 
 				// 初始位置：恢复该角色上次位置，否则按当前可见数量排在右下角。
 				useEffect(() => {
