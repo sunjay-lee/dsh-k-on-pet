@@ -565,7 +565,64 @@
 							}),
 							h("span", { className: "konp-set-value" }, `${settings.walkSeconds} 秒`),
 						),
-						h("div", { className: "konp-set-head" }, h("strong", null, "彩蛋")),
+						h("div", { className: "konp-set-row" },
+							h("div", { className: "konp-set-name" },
+								h("b", null, "语音"),
+								h("small", null, "点击 / 双击时播放原版语音"),
+							),
+							h(Switch, {
+								checked: !settings.muted,
+								onChange: () => updateSettings({ muted: !settings.muted }),
+								label: "播放语音",
+							}),
+						),
+						h("div", { className: "konp-set-row" },
+							h("div", { className: "konp-set-name" },
+								h("b", null, "随机闲聊"),
+								h("small", null, "待机时每 2.5–5 分钟说一句"),
+							),
+							h(Switch, {
+								checked: settings.chatter,
+								onChange: () => updateSettings({ chatter: !settings.chatter }),
+								label: "随机闲聊",
+							}),
+						),
+						h("div", { className: "konp-set-row" },
+							h("div", { className: "konp-set-name" },
+								h("b", null, "溜达"),
+								h("small", null, "待机时每 20–45 秒自己走一小段（睡着后不会走）"),
+							),
+							h(Switch, {
+								checked: settings.wander,
+								onChange: () => updateSettings({ wander: !settings.wander }),
+								label: "溜达",
+							}),
+						),
+						h("div", { className: "konp-set-row" },
+							h("div", { className: "konp-set-name" },
+								h("b", null, "朝向反转"),
+								h("small", null, "走路时脸和前进方向相反就打开：换用另一套左右步态素材"),
+							),
+							h(Switch, {
+								checked: settings.facingFlipped,
+								onChange: () => updateSettings({ facingFlipped: !settings.facingFlipped }),
+								label: "朝向反转",
+							}),
+						),
+						h("div", { className: "konp-set-row" },
+							h("div", { className: "konp-set-name" },
+								h("b", null, "关怀提醒"),
+								h("small", null, "每 50 分钟提醒喝水 / 休息"),
+							),
+							h(Switch, {
+								checked: settings.care,
+								onChange: () => updateSettings({ care: !settings.care }),
+								label: "关怀提醒",
+							}),
+						),
+					),
+					h("section", { className: "konp-set-card" },
+						h("div", { className: "konp-set-head" }, h("strong", null, "彩蛋"), h("span", null, "随机小剧场")),
 						h("div", { className: "konp-set-row" },
 							h("div", { className: "konp-set-name" },
 								h("b", null, "启用彩蛋"),
@@ -626,61 +683,6 @@
 								onChange: (event) => updateSettings({ teaPartyChance: Number(event.target.value) }),
 							}),
 							h("span", { className: "konp-set-value" }, `${settings.teaPartyChance}%`),
-						),
-						h("div", { className: "konp-set-row" },
-							h("div", { className: "konp-set-name" },
-								h("b", null, "语音"),
-								h("small", null, "点击 / 双击时播放原版语音"),
-							),
-							h(Switch, {
-								checked: !settings.muted,
-								onChange: () => updateSettings({ muted: !settings.muted }),
-								label: "播放语音",
-							}),
-						),
-						h("div", { className: "konp-set-row" },
-							h("div", { className: "konp-set-name" },
-								h("b", null, "随机闲聊"),
-								h("small", null, "待机时每 2.5–5 分钟说一句"),
-							),
-							h(Switch, {
-								checked: settings.chatter,
-								onChange: () => updateSettings({ chatter: !settings.chatter }),
-								label: "随机闲聊",
-							}),
-						),
-						h("div", { className: "konp-set-row" },
-							h("div", { className: "konp-set-name" },
-								h("b", null, "溜达"),
-								h("small", null, "待机时每 20–45 秒自己走一小段（睡着后不会走）"),
-							),
-							h(Switch, {
-								checked: settings.wander,
-								onChange: () => updateSettings({ wander: !settings.wander }),
-								label: "溜达",
-							}),
-						),
-						h("div", { className: "konp-set-row" },
-							h("div", { className: "konp-set-name" },
-								h("b", null, "朝向反转"),
-								h("small", null, "走路时脸和前进方向相反就打开：换用另一套左右步态素材"),
-							),
-							h(Switch, {
-								checked: settings.facingFlipped,
-								onChange: () => updateSettings({ facingFlipped: !settings.facingFlipped }),
-								label: "朝向反转",
-							}),
-						),
-						h("div", { className: "konp-set-row" },
-							h("div", { className: "konp-set-name" },
-								h("b", null, "关怀提醒"),
-								h("small", null, "每 50 分钟提醒喝水 / 休息"),
-							),
-							h(Switch, {
-								checked: settings.care,
-								onChange: () => updateSettings({ care: !settings.care }),
-								label: "关怀提醒",
-							}),
 						),
 					),
 					h("section", { className: "konp-set-card" },
@@ -929,6 +931,7 @@
 						if (leaderId) {
 							const followed = tryFollow(leaderId, 900, chance);
 							if (followed) {
+								followed.follow = leaderId;
 								const shout = Core.pick(Core.FOLLOW_LINES[member.id] || []);
 								if (shout) say(pickLang(shout, current.lang), 2600);
 								return followed;
@@ -940,8 +943,10 @@
 								return peer && now - peer.movedAt > 5000;
 							});
 							if (idleLong.length) {
-								const followed = tryFollow(Core.pick(idleLong), 600, chance * 0.75);
+								const leader = Core.pick(idleLong);
+								const followed = tryFollow(leader, 600, chance * 0.75);
 								if (followed) {
+									followed.follow = leader;
 									const shout = Core.pick(Core.FOLLOW_LINES.tsumugi || []);
 									if (shout) say(pickLang(shout, current.lang), 2600);
 									return followed;
@@ -1119,6 +1124,8 @@
 						freeSince: performance.now(),
 						autoSeat: false,
 						nextWalkAt: performance.now() + settingsRef.current.idleSeconds * 1000 * tempo * (0.6 + Math.random() * 0.8),
+						followTarget: null,
+						followDeadline: 0,
 					};
 					engineRef.current = engine;
 					assetRef.current = asset;
@@ -1208,19 +1215,40 @@
 							rotRef.current += (target - rotRef.current) * 0.15;
 						} else if (engine.mode === "walk") {
 							rotRef.current += (0 - rotRef.current) * 0.1;
-							const plan = engine.walkPlan || { dx: 0, dy: 0, duration: 0 };
-							const moved = Core.stepWalk(posRef.current, plan, current.speed * current.scale, dt);
-							// 出界回绕：往下走没了就从上面下来，左右同理。
-							const wrapped = Core.wrapPosition(moved.x, moved.y, actorSize, window.innerWidth, window.innerHeight);
-							posRef.current.x = wrapped.x;
-							posRef.current.y = wrapped.y;
-							if (Math.abs(plan.dx) > 0.15) engine.dir = plan.dx < 0 ? -1 : 1;
-							engine.walkElapsed += dt * 1000;
-							if (engine.walkElapsed >= plan.duration) {
+							let plan = engine.walkPlan || { dx: 0, dy: 0, duration: 0 };
+							let arrived = false;
+							// 跟随模式：一路追到目标附近才停；停在同一条线上并留出一个身位的间距
+							if (engine.followTarget) {
+								const peer = PEERS.get(engine.followTarget);
+								const gap = actorSize * 1.15;
+								const to = peer ? Core.planWalkTo(posRef.current.x, posRef.current.y, peer.x, peer.y) : null;
+								if (!to || to.distance <= gap || now > engine.followDeadline) {
+									engine.followTarget = null;
+									arrived = true;
+								} else {
+									plan = { dx: to.dx, dy: to.dy, duration: Number.POSITIVE_INFINITY };
+									engine.walkPlan = plan;
+								}
+							}
+							if (arrived) {
 								setClip(engine, "stand", "idle");
 								engine.nextClipAt = now + 5000 + Math.random() * 6000;
 								engine.nextWalkAt = now + current.idleSeconds * 1000 * tempo * (0.6 + Math.random() * 0.8);
 								savePosition();
+							} else {
+								const moved = Core.stepWalk(posRef.current, plan, current.speed * current.scale, dt);
+								// 出界回绕：往下走没了就从上面下来，左右同理。
+								const wrapped = Core.wrapPosition(moved.x, moved.y, actorSize, window.innerWidth, window.innerHeight);
+								posRef.current.x = wrapped.x;
+								posRef.current.y = wrapped.y;
+								if (Math.abs(plan.dx) > 0.15) engine.dir = plan.dx < 0 ? -1 : 1;
+								engine.walkElapsed += dt * 1000;
+								if (engine.walkElapsed >= plan.duration) {
+									setClip(engine, "stand", "idle");
+									engine.nextClipAt = now + 5000 + Math.random() * 6000;
+									engine.nextWalkAt = now + current.idleSeconds * 1000 * tempo * (0.6 + Math.random() * 0.8);
+									savePosition();
+								}
 							}
 						} else {
 							rotRef.current += (0 - rotRef.current) * 0.1;
@@ -1247,6 +1275,8 @@
 									const plan = planNextMove(engine, now);
 									engine.nextWalkAt = now + current.idleSeconds * 1000 * tempo * (0.6 + Math.random() * 0.8);
 									engine.walkPlan = plan;
+									engine.followTarget = plan.follow || null;
+									engine.followDeadline = now + 12000;
 									engine.walkElapsed = 0;
 									if (plan.dx < 0) engine.dir = -1;
 									else if (plan.dx > 0) engine.dir = 1;
