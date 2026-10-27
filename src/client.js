@@ -1221,13 +1221,26 @@
 							if (engine.followTarget) {
 								const peer = PEERS.get(engine.followTarget);
 								const gap = actorSize * 1.15;
-								const to = peer ? Core.planWalkTo(posRef.current.x, posRef.current.y, peer.x, peer.y) : null;
-								if (!to || to.distance <= gap || now > engine.followDeadline) {
+								if (!peer || now > engine.followDeadline) {
 									engine.followTarget = null;
 									arrived = true;
 								} else {
-									plan = { dx: to.dx, dy: to.dy, duration: Number.POSITIVE_INFINITY };
-									engine.walkPlan = plan;
+									const dy = peer.y - posRef.current.y;
+									const dx = peer.x - posRef.current.x;
+									if (Math.abs(dy) > 8) {
+										// 第一步：先走到和他同一条横线上
+										plan = { dx: 0, dy: dy > 0 ? 1 : -1, duration: Number.POSITIVE_INFINITY };
+									} else if (Math.abs(dx) > gap) {
+										// 第二步：横向靠过去，停在 gap 之外
+										plan = { dx: dx > 0 ? 1 : -1, dy: 0, duration: Number.POSITIVE_INFINITY };
+									} else if (Math.abs(dx) < gap * 0.6) {
+										// 太近了往后退一点，别贴脸
+										plan = { dx: dx > 0 ? -1 : 1, dy: 0, duration: Number.POSITIVE_INFINITY };
+									} else {
+										engine.followTarget = null;
+										arrived = true;
+									}
+									if (!arrived) engine.walkPlan = plan;
 								}
 							}
 							if (arrived) {
