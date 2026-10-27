@@ -1,4 +1,4 @@
-name: test
+name: ci
 
 on:
   push:
@@ -12,9 +12,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: browser-actions/setup-chrome@v1
-        id: chrome
-      - name: Build and test
-        run: npm test
-        env:
-          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Build client bundle
+        run: npm run build
+      - name: Static checks
+        run: node scripts/check.mjs
+      - name: Unit tests
+        run: node --test test/core.test.mjs
+      - name: Bundle is committed
+        run: git diff --exit-code -- lib/client.js
