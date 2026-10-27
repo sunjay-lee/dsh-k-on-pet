@@ -138,6 +138,12 @@
 			seats: {},
 			// 茶桌开着时，角色在外溜达多久之后自动回到座位（分钟；0 = 不回位）
 			returnAfter: 5,
+			// 移动速度（1× 缩放下的 px/s）与节奏
+			speed: 96,
+			idleSeconds: 4, // 两次走动之间的待机时长（秒）
+			walkSeconds: 3, // 单次走动的时长（秒）
+			// 随机跟随：律跟澪、唯跟梓；䌷在大家都待久了时跟其中一队
+			follow: true,
 		};
 	}
 
@@ -192,6 +198,10 @@
 			tablePos,
 			seats,
 			returnAfter: Number.isFinite(Number(source.returnAfter)) ? clamp(Number(source.returnAfter), 0, 60) : 5,
+			speed: Number.isFinite(Number(source.speed)) ? clamp(Number(source.speed), 30, 300) : 96,
+			idleSeconds: Number.isFinite(Number(source.idleSeconds)) ? clamp(Number(source.idleSeconds), 1, 30) : 4,
+			walkSeconds: Number.isFinite(Number(source.walkSeconds)) ? clamp(Number(source.walkSeconds), 1, 12) : 3,
+			follow: source.follow !== false,
 		};
 	}
 
@@ -326,6 +336,18 @@
 	}
 
 	/**
+	 * 规划一次"朝目标走"：给起止坐标，返回单位方向与距离。
+	 * 用于随机跟随（律跟澪、唯跟梓、䌷跟某一队）。
+	 */
+	function planWalkTo(fromX, fromY, toX, toY) {
+		const dx = (Number(toX) || 0) - (Number(fromX) || 0);
+		const dy = (Number(toY) || 0) - (Number(fromY) || 0);
+		const distance = Math.hypot(dx, dy);
+		if (distance < 1) return null;
+		return { dx: dx / distance, dy: dy / distance, distance };
+	}
+
+	/**
 	 * 推进溜达一步：沿计划方向匀速前进（不夹边界，出界交给 wrapPosition 处理）。
 	 */
 	function stepWalk(pos, plan, speed, dt) {
@@ -424,6 +446,7 @@
 		defaultPosition,
 		stepThrow,
 		planWalk,
+		planWalkTo,
 		stepWalk,
 		wrapPosition,
 		advanceFrame,

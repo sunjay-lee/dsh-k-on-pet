@@ -173,6 +173,19 @@ test("returnAfter defaults to 5 minutes and clamps to 0-60", () => {
 	assert.equal(Core.normalizeSettings({ returnAfter: 90 }).returnAfter, 60);
 });
 
+test("speed / idle / walk / follow 有默认值且被钳制", () => {
+	const d = Core.createDefaultSettings();
+	assert.equal(d.speed, 96);
+	assert.equal(d.idleSeconds, 4);
+	assert.equal(d.walkSeconds, 3);
+	assert.equal(d.follow, true);
+	assert.equal(Core.normalizeSettings({ speed: 999 }).speed, 300);
+	assert.equal(Core.normalizeSettings({ speed: 10 }).speed, 30);
+	assert.equal(Core.normalizeSettings({ idleSeconds: 0 }).idleSeconds, 1);
+	assert.equal(Core.normalizeSettings({ walkSeconds: 99 }).walkSeconds, 12);
+	assert.equal(Core.normalizeSettings({ follow: false }).follow, false);
+});
+
 test("planWalk returns a unit direction and a positive duration", () => {
 	for (let i = 0; i < 50; i += 1) {
 		const plan = Core.planWalk(400, 600, { maxX: 900, maxY: 700 }, 1.5);
