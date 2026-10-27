@@ -19,10 +19,6 @@
 	const CARE_EVERY = 50 * 60 * 1000;
 	const TALK_EVERY = [2.5 * 60 * 1000, 5 * 60 * 1000];
 	const GRAVITY = 1900;
-	// 溜达：待机时每隔一阵沿当前高度走一小段，借用原版图集里的迈步帧。
-	const WALK_SPEED = 42; // 每秒位移（1× 缩放下的像素）
-	const WALK_EVERY = [2000, 5000]; // 两次溜达之间的间隔（毫秒）：待机很短，大部分时间在走
-	const WALK_DISTANCE = [120, 420]; // 单次溜达的距离（1× 缩放下的像素）
 
 	// 桌面摆件：desk00(中间三把椅子) + desk01(两侧椅子) 叠成五个固定座位。
 	// 坐标来自 MascotTable_d/main.sd 的对象表（x 为 288×160 场景内的左坐标）。
@@ -128,16 +124,11 @@
 			muted: false,
 			chatter: true,
 			care: true,
-			wander: true,
-			facingFlipped: false,
-			resetAt: 0,
 			positions: {},
 			table: true,
 			tableLocked: false,
 			tablePos: null,
 			seats: {},
-			// 茶桌开着时，角色在外溜达多久之后自动回到座位（分钟；0 = 不回位）
-			returnAfter: 5,
 		};
 	}
 
@@ -183,15 +174,11 @@
 			muted: Boolean(source.muted),
 			chatter: source.chatter !== false,
 			care: source.care !== false,
-			wander: source.wander !== false,
-			facingFlipped: source.facingFlipped === true,
-			resetAt: Number.isFinite(source.resetAt) ? Number(source.resetAt) : 0,
 			positions,
 			table,
 			tableLocked,
 			tablePos,
 			seats,
-			returnAfter: Number.isFinite(Number(source.returnAfter)) ? clamp(Number(source.returnAfter), 0, 60) : 5,
 		};
 	}
 
@@ -305,51 +292,6 @@
 		return { x, y, vx, vy, landed };
 	}
 
-	/**
-	 * 规划一次溜达：任意方位走一段随机距离（原版可以朝任意方向走）。
-	 * 返回单位方向、距离与时长；调用方按方向选左右步态。
-	 */
-	function planWalk(x, y, limit, scale = 1) {
-		const factor = Math.max(0.5, Number(scale) || 1);
-		const min = WALK_DISTANCE[0] * factor;
-		const max = WALK_DISTANCE[1] * factor;
-		const angle = Math.random() * Math.PI * 2;
-		const dx = Math.cos(angle);
-		const dy = Math.sin(angle);
-		const distance = min + Math.random() * (max - min);
-		return {
-			dx,
-			dy,
-			distance,
-			duration: (distance / (WALK_SPEED * factor)) * 1000,
-		};
-	}
-
-	/**
-	 * 推进溜达一步：沿计划方向匀速前进（不夹边界，出界交给 wrapPosition 处理）。
-	 */
-	function stepWalk(pos, plan, speed, dt) {
-		const step = Math.max(0, (Number(speed) || 0) * Math.max(0, Number(dt) || 0));
-		return {
-			x: (Number(pos.x) || 0) + plan.dx * step,
-			y: (Number(pos.y) || 0) + plan.dy * step,
-		};
-	}
-
-	/**
-	 * 出界回绕：往下走没了就从上面下来，左右同理（原版的行为）。
-	 * size 是角色边长，viewport 是可视区尺寸。
-	 */
-	function wrapPosition(x, y, size, viewportWidth, viewportHeight) {
-		const spanX = Math.max(1, viewportWidth) + size;
-		const spanY = Math.max(1, viewportHeight) + size;
-		const wrap = (value, span) => ((((value + size) % span) + span) % span) - size;
-		return {
-			x: wrap(Number(x) || 0, spanX),
-			y: wrap(Number(y) || 0, spanY),
-		};
-	}
-
 	function advanceFrame(state, dt, fps, frameCount) {
 		if (!Number.isFinite(fps) || fps <= 0 || frameCount <= 0) {
 			return { frame: state.frame || 0, acc: state.acc || 0 };
@@ -402,9 +344,6 @@
 		CARE_EVERY,
 		TALK_EVERY,
 		GRAVITY,
-		WALK_SPEED,
-		WALK_EVERY,
-		WALK_DISTANCE,
 		TABLE,
 		ROSTER,
 		LINES,
@@ -423,9 +362,6 @@
 		boundsFor,
 		defaultPosition,
 		stepThrow,
-		planWalk,
-		stepWalk,
-		wrapPosition,
 		advanceFrame,
 		frameRect,
 		exportSettings,

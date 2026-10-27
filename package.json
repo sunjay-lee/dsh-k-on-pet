@@ -1,7 +1,7 @@
 {
   "name": "dsh-k-on-pet",
-  "version": "1.0.0",
-  "description": "《轻音少女》五位角色的 DSH Web 桌宠：任意方位走动、待机/点击/双击动作、茶桌与自动回位，素材取自原版 Windows 桌宠。",
+  "version": "0.5.3",
+  "description": "K-ON! 轻音少女桌面宠物：把平泽唯、秋山澪、田井中律、琴吹䌷、中野梓挂进 DeepSeek Harness 的 Web 界面。",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -25,7 +25,9 @@
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
-    "THIRD_PARTY_NOTICES.md"
+    "THIRD_PARTY_NOTICES.md",
+    "scripts",
+    "test"
   ],
   "dsh": {
     "bundle": {
@@ -33,6 +35,7 @@
     },
     "compatibility": {
       "dshReleases": {
+        "0.1.7-rc.2": "incompatible",
         "0.2.0-rc.1": "compatible",
         "0.2.0-rc.2": "compatible",
         "0.2.1-rc.2": "compatible"
@@ -54,16 +57,16 @@
   "scripts": {
     "build": "node scripts/build-client.mjs",
     "check": "node scripts/check.mjs",
+    "build:meta": "python3 scripts/build-meta.py",
     "test:unit": "node --test test/core.test.mjs",
-    "test": "npm run build && node scripts/check.mjs && node --test test/core.test.mjs",
-    "prepublishOnly": "npm run build && node scripts/check.mjs"
+    "test": "npm run build && node scripts/check.mjs && node --test test/core.test.mjs && node scripts/smoke.mjs",
+    "prepublishOnly": "npm run build && node scripts/check.mjs && npm run test:unit"
   },
   "keywords": [
     "dsh",
     "dsh-plugin",
     "deepseek-harness",
     "k-on",
-    "keion",
     "desktop-pet",
     "mascot",
     "web"
@@ -73,5 +76,13 @@
   },
   "license": "MIT",
   "author": "dsh-k-on-pet contributors",
-  "icon": "assets/icon.png"
+  "icon": "assets/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sunjay-lee/dsh-k-on-pet.git"
+  },
+  "homepage": "https://github.com/sunjay-lee/dsh-k-on-pet#readme",
+  "bugs": {
+    "url": "https://github.com/sunjay-lee/dsh-k-on-pet/issues"
+  }
 }

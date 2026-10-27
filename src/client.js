@@ -26,8 +26,6 @@
 				SLEEP_AFTER,
 				CARE_EVERY,
 				TALK_EVERY,
-				WALK_SPEED,
-				WALK_EVERY,
 				ROSTER,
 				LINES,
 				CARE_LINES,
@@ -38,50 +36,6 @@
 			const clampTablePosition = Core.clampTablePosition;
 			const tableSeatAt = Core.tableSeatAt;
 			const tableContainsPoint = Core.tableContainsPoint;
-
-			// 素材已按"原版行动作表的行序"重建，每个角色用哪一行写在 meta.json 的 actions 里，
-			// 代码不再维护行号表。原版行序：1/2 = 左/右步态；其余按角色各自内容（见改动说明）。
-			const actionsOf = (meta) => {
-				const actions = meta && meta.actions;
-				if (actions && typeof actions === "object") return actions;
-				// 兼容没有 actions 的旧素材
-				return { idle: 0, walkLeft: 4, walkRight: 5, react: 6, sleep: 1, held: 2 };
-			};
-
-			const rowFrames = (meta, row) => {
-				if (!meta || !Array.isArray(meta.cells) || row === undefined || row === null) return [];
-				const cols = meta.sheet.columns;
-				return meta.cells
-					.filter((cell) => Math.floor(cell.index / cols) === row)
-					.filter((cell) => {
-						const box = cell.bbox;
-						// 和 build-meta.py 的 valid() 保持一致：跳过只留一小条的过渡格。
-						return box && box[2] - box[0] >= 20 && box[3] - box[1] >= 40;
-					})
-					.sort((a, b) => a.index - b.index)
-					.map((cell) => cell.index);
-			};
-
-			// 待机 = 该角色原地不动的可爱动作循环。
-			const idleFrames = (meta) => {
-				const rows = rowFrames(meta, actionsOf(meta).idle);
-				if (rows.length) return rows;
-				const clips = meta.clips || {};
-				return clips.react && clips.react.length ? clips.react : (clips.idle || [0]);
-			};
-
-			// 走路帧：向左用 walkLeft 行、向右用 walkRight 行（原版就是两个方向各一套）。
-			// facingFlipped 把左右两行对调，用来现场纠正方向。
-			const walkFrames = (meta, dir = -1, flipped = false) => {
-				const actions = actionsOf(meta);
-				const wantLeft = dir < 0;
-				const useLeft = Boolean(flipped) ? !wantLeft : wantLeft;
-				const row = useLeft ? actions.walkLeft : actions.walkRight;
-				const frames = rowFrames(meta, row);
-				if (frames.length) return frames;
-				const clips = meta.clips || {};
-				return clips[useLeft ? "walkLeft" : "walkRight"] || clips.idle || [0];
-			};
 
 			const CSS = `
 .konp-root{position:fixed;inset:0;z-index:2147482000;pointer-events:none;font-family:inherit}
@@ -458,24 +412,6 @@
 							}),
 						),
 						h("p", { className: "konp-set-note" }, "座位从左到右固定为：澪、律、唯、䌷、梓。桌子本身也可以拖动。"),
-						h("div", { className: "konp-set-row" },
-							h("div", { className: "konp-set-name" },
-								h("b", null, "自动回位"),
-								h("small", null, "在外溜达超过这个时间就自己回到座位（0 = 不自动回位）"),
-							),
-							h("input", {
-								className: "konp-range",
-								type: "range",
-								min: 0,
-								max: 30,
-								step: 1,
-								value: settings.returnAfter,
-								"aria-label": "自动回位时间（分钟）",
-								onChange: (event) => updateSettings({ returnAfter: Number(event.target.value) }),
-							}),
-							h("span", { className: "konp-set-value" },
-								settings.returnAfter > 0 ? `${settings.returnAfter} 分` : "关"),
-						),
 						h("div", { className: "konp-set-actions" },
 							h("button", {
 								className: "konp-set-btn",
@@ -527,28 +463,6 @@
 						),
 						h("div", { className: "konp-set-row" },
 							h("div", { className: "konp-set-name" },
-								h("b", null, "溜达"),
-								h("small", null, "待机时每 20–45 秒自己走一小段（睡着后不会走）"),
-							),
-							h(Switch, {
-								checked: settings.wander,
-								onChange: () => updateSettings({ wander: !settings.wander }),
-								label: "溜达",
-							}),
-						),
-						h("div", { className: "konp-set-row" },
-							h("div", { className: "konp-set-name" },
-								h("b", null, "朝向反转"),
-								h("small", null, "走路时脸和前进方向相反就打开：换用另一套左右步态素材"),
-							),
-							h(Switch, {
-								checked: settings.facingFlipped,
-								onChange: () => updateSettings({ facingFlipped: !settings.facingFlipped }),
-								label: "朝向反转",
-							}),
-						),
-						h("div", { className: "konp-set-row" },
-							h("div", { className: "konp-set-name" },
 								h("b", null, "关怀提醒"),
 								h("small", null, "每 50 分钟提醒喝水 / 休息"),
 							),
@@ -582,20 +496,6 @@
 							h("button", {
 								className: "konp-set-btn",
 								type: "button",
-								// 初始化：位置、座位、桌子位置、朝向全部回到默认，并让运行中的角色重新开始。
-								onClick: () => updateSettings((current) => ({
-									...current,
-									positions: {},
-									seats: {},
-									tablePos: null,
-									tableLocked: false,
-									facingFlipped: false,
-									resetAt: Date.now(),
-								})),
-							}, "初始化"),
-							h("button", {
-								className: "konp-set-btn",
-								type: "button",
 								onClick: () => updateSettings((current) => ({ ...current, positions: {} })),
 							}, "重置所有位置"),
 							h("button", {
@@ -604,13 +504,12 @@
 								onClick: () => replaceSettings(Core.createDefaultSettings()),
 							}, "恢复默认设置"),
 						),
-						h("p", { className: "konp-set-note" }, "「初始化」会清空位置、座位和桌子位置，把朝向恢复为默认，并让走动的角色立刻停下重新排队。"),
 					),
 					h("p", { className: "konp-set-note" }, "提示：右键宠物可以单独隐藏它；隐藏后仍可在这里重新打开。"),
 				);
 			}
 
-			function PetActor({ member, settings, index, count, onHide, onDropSeat, onAutoSeat, getSeatTarget }) {
+			function PetActor({ member, settings, index, count, onHide, onDropSeat }) {
 				const [asset, setAsset] = useState(null);
 				const [assetError, setAssetError] = useState("");
 				const [bubble, setBubble] = useState(null);
@@ -618,12 +517,6 @@
 
 				const settingsRef = useRef(settings);
 				settingsRef.current = settings;
-				// 自动回位的回调放在 ref 里，避免它变化导致主循环重建。
-				const autoSeatRef = useRef(null);
-				autoSeatRef.current = onAutoSeat || null;
-				// 座位中心点（视口坐标），回位时用来导航。
-				const seatTargetRef = useRef(null);
-				seatTargetRef.current = getSeatTarget || null;
 
 				const assetRef = useRef(null);
 				const engineRef = useRef(null);
@@ -665,7 +558,7 @@
 				}, []);
 
 				const playVoice = useCallback((meta) => {
-					if (settingsRef.current.muted || !meta || !Array.isArray(meta.voices) || meta.voices.length === 0) return "";
+					if (settingsRef.current.muted || !meta || !Array.isArray(meta.voices) || meta.voices.length === 0) return;
 					let file = Core.pick(meta.voices);
 					if (meta.voices.length > 1 && file === lastVoice.current) {
 						file = Core.pick(meta.voices.filter((voice) => voice !== file));
@@ -677,25 +570,12 @@
 					audio.play().catch(() => {
 						// 没有用户手势时浏览器会拒绝播放，静默忽略。
 					});
-					return file;
 				}, []);
 
 				const setClip = useCallback((engine, clip, mode) => {
 					const meta = assetRef.current && assetRef.current.meta;
 					if (!meta) return;
-					// stand = 原地可爱动作循环；react = 该角色的"被点反应"行；其余走 meta.clips。
-					// 行号全部来自 meta.json 的 actions，代码里不再维护映射表。
-					const actions = actionsOf(meta);
-					const clips = meta.clips || {};
-					const rowOf = { stand: actions.idle, react: actions.react, sleep: actions.sleep, held: actions.held };
-					let frames;
-					const row = rowOf[clip];
-					if (row !== undefined && row !== null) {
-						const rows = rowFrames(meta, row);
-						frames = rows.length ? rows : clips[clip] && clips[clip].length ? clips[clip] : idleFrames(meta);
-					} else {
-						frames = clips[clip] && clips[clip].length ? clips[clip] : idleFrames(meta);
-					}
+					const frames = meta.clips[clip] && meta.clips[clip].length ? meta.clips[clip] : meta.clips.idle;
 					engine.clip = clip;
 					engine.frames = frames;
 					engine.frame = 0;
@@ -703,66 +583,39 @@
 					if (mode) engine.mode = mode;
 				}, []);
 
-				// 直接播某一行（点击反应 / 跳舞这类"一次性动作"用）。
-				const setClipRow = useCallback((engine, row, mode) => {
-					const meta = assetRef.current && assetRef.current.meta;
-					if (!meta) return 0;
-					const frames = rowFrames(meta, row);
-					engine.clip = "custom";
-					engine.frames = frames.length ? frames : idleFrames(meta);
-					engine.frame = 0;
-					engine.acc = 0;
-					if (mode) engine.mode = mode;
-					return engine.frames.length;
-				}, []);
-
 				const wake = useCallback(() => {
 					const engine = engineRef.current;
 					if (!engine) return;
 					engine.lastInteract = performance.now();
 					if (engine.mode === "sleep") {
-						setClip(engine, "stand", "idle");
+						setClip(engine, "idle", "idle");
 						engine.nextClipAt = performance.now() + 8000 + Math.random() * 6000;
 					}
 				}, [setClip]);
 
-				// 单击：在 actions.click 里随机挑一行（原版点一下会背对镜头 / 扶额闭眼），
-				// 播 3 秒，然后回到待机或继续走动。
 				const reactNow = useCallback((useVoice = true) => {
 					const engine = engineRef.current;
 					const current = assetRef.current;
 					if (!engine || !current) return;
-					const actions = actionsOf(current.meta);
-					const rows = Array.isArray(actions.click) ? actions.click.filter((row) => row !== undefined && row !== null) : [];
-					if (!rows.length) return;
-					const row = rows[Math.floor(Math.random() * rows.length)];
 					engine.lastInteract = performance.now();
-					setClipRow(engine, row, "react");
-					engine.reactUntil = performance.now() + 3000;
-					// 气泡跟随实际播放的那条语音（meta.lines 里是逐条的日文/中文），没有就用音符。
-					const file = useVoice ? playVoice(current.meta) : "";
-					const line = file && current.meta.lines ? current.meta.lines[file] : null;
-					say((line && line.zh) || "♪", 2600);
-				}, [playVoice, say, setClipRow]);
+					setClip(engine, "react", "react");
+					engine.reactUntil = performance.now() + (engine.frames.length / CLIP_FPS.react) * 1000 + 350;
+					say(Core.pick(LINES[current.meta.id] || LINES.yui));
+					if (useVoice) playVoice(current.meta);
+				}, [playVoice, say, setClip]);
 
 				const triggerClick = useCallback(() => reactNow(true), [reactNow]);
 
-				// 双击：跳舞（actions.dance 行循环几轮），跳完回待机，过几秒自动开始走动。
 				const triggerDouble = useCallback(() => {
 					const engine = engineRef.current;
-					const current = assetRef.current;
-					if (!engine || !current) return;
+					if (!engine) return;
 					const now = performance.now();
 					if (now - lastDoubleAt.current < 400) return;
 					lastDoubleAt.current = now;
-					const actions = actionsOf(current.meta);
-					const frames = rowFrames(current.meta, actions.dance);
-					if (!frames.length) return;
-					engine.lastInteract = now;
-					setClipRow(engine, actions.dance, "dance");
-					engine.danceUntil = now + Math.max(2400, (frames.length / 5) * 1000 * 3);
-					say("❤", 2600);
-				}, [say, setClipRow]);
+					reactNow(false);
+					const line = Core.pick(LINES[(assetRef.current && assetRef.current.meta.id) || member.id] || []);
+					say(`❤ ${line}`, 4600);
+				}, [member.id, reactNow, say]);
 
 				// 初始位置：恢复该角色上次位置，否则按当前可见数量排在右下角。
 				useEffect(() => {
@@ -776,25 +629,6 @@
 					};
 					syncTransform();
 				}, [storedX, storedY, index, count, size, bounds, syncTransform]);
-
-				// 设置页点了「初始化」：把这只从走动/拖拽里拽回待机，并重置所有计时器。
-				useEffect(() => {
-					if (!settings.resetAt) return;
-					const engine = engineRef.current;
-					if (!engine) return;
-					const now = performance.now();
-					engine.mode = "idle";
-					engine.vx = 0;
-					engine.vy = 0;
-					engine.dir = 1;
-					engine.reactUntil = 0;
-					engine.lastInteract = now;
-					engine.nextWalkAt = now + WALK_EVERY[0] + Math.random() * (WALK_EVERY[1] - WALK_EVERY[0]);
-					engine.nextTalkAt = now + TALK_EVERY[0] + Math.random() * (TALK_EVERY[1] - TALK_EVERY[0]);
-					engine.nextCareAt = now + CARE_EVERY;
-					rotRef.current = 0;
-					setClip(engine, "stand", "idle");
-				}, [settings.resetAt, setClip]);
 
 				useEffect(() => {
 					const onResize = () => {
@@ -892,8 +726,8 @@
 					const image = asset.image;
 					const engine = {
 						mode: "idle",
-						clip: "stand",
-						frames: idleFrames(meta),
+						clip: "idle",
+						frames: meta.clips.idle,
 						frame: 0,
 						acc: 0,
 						lastInteract: performance.now(),
@@ -904,15 +738,6 @@
 						vx: 0,
 						vy: 0,
 						sleepAnnounced: false,
-						// 溜达状态：任意方向的计划、已走时长、朝向、下一次溜达时间。
-						walkPlan: null,
-						walkElapsed: 0,
-						danceUntil: 0,
-						dir: 1,
-						// 自动回位：从挂载（自由状态）开始计时
-						freeSince: performance.now(),
-						autoSeat: false,
-						nextWalkAt: performance.now() + WALK_EVERY[0] + Math.random() * (WALK_EVERY[1] - WALK_EVERY[0]),
 					};
 					engineRef.current = engine;
 					assetRef.current = asset;
@@ -934,48 +759,7 @@
 						const limit = Core.boundsFor(window.innerWidth, window.innerHeight, actorSize);
 						const pointer = pointerRef.current;
 
-						// 茶桌开着时：在外自由活动超过设定时长，就自己朝座位走过去。
-						if (!engine.autoSeat && current.table && current.returnAfter > 0 && autoSeatRef.current &&
-							engine.mode !== "drag" && engine.mode !== "throw" && engine.mode !== "return" &&
-							now - engine.freeSince >= current.returnAfter * 60000) {
-							engine.mode = "return";
-							engine.returnDeadline = now + 12000;
-							engine.clip = "walk";
-							engine.frames = walkFrames(meta, engine.dir, current.facingFlipped);
-							engine.frame = 0;
-							engine.acc = 0;
-						}
-
-						if (engine.mode === "return") {
-							// 朝自己的座位走；到达就入座，超时也入座（避免卡住）。
-							const target = seatTargetRef.current ? seatTargetRef.current(member.id) : null;
-							if (!target) {
-								engine.autoSeat = true;
-								autoSeatRef.current(member.id);
-								return;
-							}
-							const cx = posRef.current.x + actorSize / 2;
-							const cy = posRef.current.y + actorSize / 2;
-							const dx = target.x - cx;
-							const dy = target.y - cy;
-							const dist = Math.hypot(dx, dy);
-							if (dist <= 14 || now > engine.returnDeadline) {
-								engine.autoSeat = true;
-								autoSeatRef.current(member.id);
-								return;
-							}
-							const stepLen = WALK_SPEED * current.scale * 1.5 * dt;
-							posRef.current.x += (dx / dist) * stepLen;
-							posRef.current.y += (dy / dist) * stepLen;
-							const dir = dx < 0 ? -1 : 1;
-							if (dir !== engine.dir) {
-								engine.dir = dir;
-								engine.clip = "walk";
-								engine.frames = walkFrames(meta, dir, current.facingFlipped);
-								engine.frame = 0;
-								engine.acc = 0;
-							}
-						} else if (engine.mode === "drag" && pointer) {
+						if (engine.mode === "drag" && pointer) {
 							const target = reduceMotion.current ? 0 : Core.clamp(engine.vx * 0.01, -10, 10);
 							rotRef.current += (target - rotRef.current) * 0.18;
 						} else if (engine.mode === "throw") {
@@ -990,38 +774,16 @@
 							engine.vx = next.vx;
 							engine.vy = next.vy;
 							if (next.landed) {
-								setClip(engine, "stand", "idle");
+								setClip(engine, "idle", "idle");
 								engine.nextClipAt = now + 6000 + Math.random() * 5000;
 								savePosition();
 							}
 							const target = reduceMotion.current ? 0 : Core.clamp(engine.vx * 0.02, -12, 12);
 							rotRef.current += (target - rotRef.current) * 0.15;
-						} else if (engine.mode === "walk") {
-							rotRef.current += (0 - rotRef.current) * 0.1;
-							const plan = engine.walkPlan || { dx: 0, dy: 0, duration: 0 };
-							const moved = Core.stepWalk(posRef.current, plan, WALK_SPEED * current.scale, dt);
-							// 出界回绕：往下走没了就从上面下来，左右同理。
-							const wrapped = Core.wrapPosition(moved.x, moved.y, actorSize, window.innerWidth, window.innerHeight);
-							posRef.current.x = wrapped.x;
-							posRef.current.y = wrapped.y;
-							if (Math.abs(plan.dx) > 0.15) engine.dir = plan.dx < 0 ? -1 : 1;
-							engine.walkElapsed += dt * 1000;
-							if (engine.walkElapsed >= plan.duration) {
-								setClip(engine, "stand", "idle");
-								engine.nextClipAt = now + 5000 + Math.random() * 6000;
-								engine.nextWalkAt = now + WALK_EVERY[0] + Math.random() * (WALK_EVERY[1] - WALK_EVERY[0]);
-								savePosition();
-							}
 						} else {
 							rotRef.current += (0 - rotRef.current) * 0.1;
-							if (engine.mode === "dance" && now >= engine.danceUntil) {
-								setClip(engine, "stand", "idle");
-								engine.nextClipAt = now + 4000 + Math.random() * 4000;
-								// 跳完舞歇一下就走起来。
-								engine.nextWalkAt = now + 1500 + Math.random() * 2000;
-								savePosition();
-							} else if (engine.mode === "react" && now >= engine.reactUntil) {
-								setClip(engine, "stand", "idle");
+							if (engine.mode === "react" && now >= engine.reactUntil) {
+								setClip(engine, "idle", "idle");
 								engine.nextClipAt = now + 7000 + Math.random() * 5000;
 							} else if (engine.mode === "idle" && now - engine.lastInteract > SLEEP_AFTER) {
 								setClip(engine, "sleep", "sleep");
@@ -1032,19 +794,10 @@
 								say("Zzz…", 2600);
 							}
 							if (engine.mode === "idle") {
-								if (current.wander && !reduceMotion.current && now > engine.nextWalkAt) {
-									// 任意方位走一段；方向决定用哪一套步态行。
-									const plan = Core.planWalk(posRef.current.x, posRef.current.y, limit, current.scale);
-									engine.nextWalkAt = now + WALK_EVERY[0] + Math.random() * (WALK_EVERY[1] - WALK_EVERY[0]);
-									engine.walkPlan = plan;
-									engine.walkElapsed = 0;
-									if (plan.dx < 0) engine.dir = -1;
-									else if (plan.dx > 0) engine.dir = 1;
-									engine.clip = "walk";
-									engine.frames = walkFrames(meta, engine.dir, current.facingFlipped);
-									engine.frame = 0;
-									engine.acc = 0;
-									engine.mode = "walk";
+								if (now > engine.nextClipAt) {
+									const pool = ["idle", "idleAlt", "extra"];
+									setClip(engine, Core.pick(pool), "idle");
+									engine.nextClipAt = now + 8000 + Math.random() * 6000;
 								}
 								if (current.chatter && now > engine.nextTalkAt) {
 									engine.nextTalkAt = now + TALK_EVERY[0] + Math.random() * (TALK_EVERY[1] - TALK_EVERY[0]);
@@ -1062,10 +815,7 @@
 
 						syncTransform();
 
-						// 走路时按位移速度推帧，避免步频和移动速度对不上（看起来像滑步）。
-						const walkFps = Math.max(2, Math.min(8, (WALK_SPEED * current.scale) / 22));
-						const fps = engine.mode === "walk" ? walkFps : engine.clip === "stand" ? 4 : (CLIP_FPS[engine.clip] || 5);
-						const advanced = Core.advanceFrame(engine, dt, fps, engine.frames.length);
+						const advanced = Core.advanceFrame(engine, dt, CLIP_FPS[engine.clip] || 5, engine.frames.length);
 						engine.frame = advanced.frame;
 						engine.acc = advanced.acc;
 
@@ -1073,7 +823,6 @@
 						const index = frames[engine.frame % frames.length];
 						const rect = Core.frameRect(index, meta.sheet.columns);
 						ctx.clearRect(0, 0, CELL, CELL);
-						// 不再做运行时镜像：左右方向各有一套原画帧，走路时按 dir 换行。
 						ctx.drawImage(image, rect.sx, rect.sy, rect.size, rect.size, 0, 0, CELL, CELL);
 					};
 
@@ -1091,12 +840,7 @@
 					setMenu(null);
 					wake();
 					const engine = engineRef.current;
-					if (engine) {
-						engine.lastInteract = performance.now();
-						// 正在溜达时被抓住：先停下再拖，否则拖拽原点和实时位置对不上。
-						if (engine.mode === "walk") setClip(engine, "stand", "idle");
-						engine.nextWalkAt = engine.lastInteract + WALK_EVERY[0] + Math.random() * (WALK_EVERY[1] - WALK_EVERY[0]);
-					}
+					if (engine) engine.lastInteract = performance.now();
 					const target = event.currentTarget;
 					if (target && target.setPointerCapture) {
 						try { target.setPointerCapture(event.pointerId); } catch { /* ignore */ }
@@ -1114,7 +858,7 @@
 						vy: 0,
 						moved: false,
 					};
-				}, [setClip, wake]);
+				}, [wake]);
 
 				const onPointerMove = useCallback((event) => {
 					const pointer = pointerRef.current;
@@ -1187,7 +931,7 @@
 							engine.nextClipAt = now + 6000 + Math.random() * 5000;
 							rotRef.current = 0;
 							syncTransform();
-							setClip(engine, "stand", "idle");
+							setClip(engine, "idle", "idle");
 						}
 					}
 					updateSettings((current) => ({
@@ -1228,7 +972,7 @@
 						engine.vx = 0;
 						engine.vy = 0;
 						engine.nextClipAt = performance.now() + 7000 + Math.random() * 5000;
-						setClip(engine, "stand", "idle");
+						setClip(engine, "idle", "idle");
 					}
 					updateSettings((current) => {
 						const positions = { ...current.positions };
@@ -1791,6 +1535,7 @@
 					}));
 					return true;
 				};
+
 				const onSeatDrop = (id, x, y) => {
 					const size = CELL * settings.scale;
 					const seat = Core.tableSeatAt(
@@ -1812,15 +1557,6 @@
 						seats: { ...current.seats, [id]: false },
 						positions: { ...current.positions, [id]: { x: Math.round(x), y: Math.round(y) } },
 					}));
-				};
-
-				// 回位导航：给出该角色座位中心（视口坐标）。
-				const getSeatTarget = (id) => {
-					if (!settings.table) return null;
-					const seat = TABLE.seats.find((entry) => entry.id === id);
-					if (!seat) return null;
-					const rect = Core.tableSeatRect(seat, tableRef.current.x, tableRef.current.y, settings.scale);
-					return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
 				};
 
 				return h("div", { className: "konp-root" },
@@ -1848,11 +1584,6 @@
 							seats: { ...current.seats, [member.id]: false },
 						})),
 						onDropSeat,
-						// 自动回位：茶桌开着时，先把座位状态置为已入座
-						onAutoSeat: (id) => updateSettings((current) => (
-							current.table ? { ...current, seats: { ...current.seats, [id]: true } } : current
-						)),
-						getSeatTarget,
 					})),
 				);
 			}
