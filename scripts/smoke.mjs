@@ -219,7 +219,8 @@ async function clickButton(text) {
 
 async function setScale(value) {
 	return evaluate(`(() => {
-		const input = document.querySelector('.konp-settings input[type="range"]');
+		// 按 aria-label 找「桌宠大小」：设置页第一个 range 现在是「自动回位」
+		const input = document.querySelector('.konp-settings input[aria-label="桌宠大小"]');
 		if (!input) throw new Error('找不到大小滑块');
 		const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
 		setter.call(input, String(${value}));

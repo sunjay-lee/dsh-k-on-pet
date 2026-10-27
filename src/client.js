@@ -1395,6 +1395,12 @@
 
 				const settingsRef = useRef(settings);
 				settingsRef.current = settings;
+				// 素材只跟"这个角色自己的图集覆盖"有关：位置之类的设置变化不该重载素材，
+				// 否则主循环每次都被重建，自动回位的计时永远攒不满。
+				const customSheet = (settings.sheetOverrides || {})[member.id] || null;
+				const sheetKey = customSheet
+					? `${customSheet.src.length}:${customSheet.src.slice(-24)}:${customSheet.cols}:${customSheet.rows}:${(customSheet.anims || []).map((anim) => `${anim.row}=${(anim.frames || []).join(",")}`).join(";")}`
+					: "";
 				// 自动回位的回调放在 ref 里，避免它变化导致主循环重建。
 				const autoSeatRef = useRef(null);
 				autoSeatRef.current = onAutoSeat || null;
@@ -1525,17 +1531,7 @@
 					engine.lastInteract = performance.now();
 					setClipRow(engine, row, "react");
 					engine.reactUntil = performance.now() + 3000;
-					// 连点彩蛋：2.5 秒内连点䌷 15 次，直接开茶会
-					if (member.id === "tsumugi") {
-						const tick = performance.now();
-						if (tick - clickStreakAt.current > 2500) clickStreak.current = 0;
-						clickStreakAt.current = tick;
-						clickStreak.current += 1;
-						if (clickStreak.current >= 15) {
-							clickStreak.current = 0;
-							if (onTeaPartyRef.current) onTeaPartyRef.current();
-						}
-					}
+					// 连点彩蛋的计数在 onPointerUp 里做（双击判定之前），这里不再重复计
 					// 气泡跟随实际播放的那条语音（meta.lines 里是逐条的日文/中文），没有就用音符。
 					const file = useVoice ? playVoice(current.meta) : "";
 					const line = file && current.meta.lines ? current.meta.lines[file] : null;
@@ -1719,7 +1715,7 @@
 							return response.json();
 						})
 						.then((rawMeta) => new Promise((resolve, reject) => {
-							const custom = (settingsRef.current.sheetOverrides || {})[member.id];
+							const custom = customSheet;
 							const meta = custom ? withCustomSheet(rawMeta, custom) : rawMeta;
 							const image = new Image();
 							image.decoding = "async";
@@ -1739,7 +1735,7 @@
 					return () => {
 						alive = false;
 					};
-				}, [member.id, settings.sheetOverrides]);
+				}, [member.id, sheetKey]);
 
 				// 行为开关变化时重置对应计时，避免刚打开就立刻触发。
 				useEffect(() => {
@@ -2087,6 +2083,18 @@
 					if (actorRef.current) actorRef.current.classList.remove("is-drag");
 					if (!pointer.moved) {
 						const now = performance.now();
+						// 连点彩蛋要在双击判定之前记数：不然快速连点全被当成双击吞掉，
+						// 2.5 秒内点 15 下永远凑不满。
+						if (member.id === "tsumugi") {
+							if (now - clickStreakAt.current > 2500) clickStreak.current = 0;
+							clickStreakAt.current = now;
+							clickStreak.current += 1;
+							if (clickStreak.current >= 15) {
+								clickStreak.current = 0;
+								clickStreakAt.current = 0;
+								if (onTeaPartyRef.current) onTeaPartyRef.current();
+							}
+						}
 						const isDouble = now - lastClickAt.current < 340;
 						lastClickAt.current = isDouble ? 0 : now;
 						clearTimeout(clickTimer.current);
@@ -2100,15 +2108,10 @@
 					const now = performance.now();
 					const idleFor = now - pointer.lastT;
 					const speed = Math.max(Math.hypot(pointer.vx || 0, pointer.vy || 0), pointer.peak || 0);
-					// A pause of ~0.24s means the user stopped to place the character; only a
-					// genuinely quick flick should launch it again.
-					const fling = settingsRef.current.throwEnabled !== false && speed >= 80 && idleFor < 600;
-					// Slow drags can finish on the table; seat before persisting the
-					// free position so the actor disappears into its table pose.
-					// Dropping anywhere on the table seats the character, even after a
-					// quick flick; the table is an explicit drop target.
-					// 快速甩动优先：扔的动作不应该被"落到桌上就入座"拦掉
-					if (!fling && onDropSeat && onDropSeat(member.id, posRef.current)) return;
+					// 停顿约 0.24 秒说明用户是在"放"，只有真正的快甩才继续甩出去
+					const fling = settingsRef.current.throwEnabled !== false && speed >= 260 && idleFor < 240;
+					// 茶桌是明确的放下目标：落在桌面上就入座，慢放和快甩都一样
+					if (onDropSeat && onDropSeat(member.id, posRef.current)) return;
 					if (engine) {
 						if (fling) {
 							engine.mode = "throw";
@@ -2513,8 +2516,8 @@
 
 				const onGrabDown = (event) => {
 					if (event.button !== undefined && event.button !== 0 && event.pointerType !== "touch") return;
-					// 固定位置只影响右键菜单的文案，不再阻止拖动（否则一旦固定过就再也拖不动）
-					if (settings.tableLocked) updateSettings((current) => ({ ...current, tableLocked: false }));
+					// 固定后就不再响应拖动；要移动它请右键「取消固定位置」
+					if (settings.tableLocked) return;
 					event.preventDefault();
 					event.stopPropagation();
 					const element = event.currentTarget;
