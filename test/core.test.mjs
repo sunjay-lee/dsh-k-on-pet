@@ -213,16 +213,16 @@ test("stepWalk moves along the plan in any direction", () => {
 	assert.ok(Math.abs(b.y - 31) < 1e-9);
 });
 
-test("wrapPosition wraps around all four edges", () => {
+test("wrapPosition 从对侧内侧出现（不会在屏幕外滑行）", () => {
 	const vw = 800, vh = 600, size = 96;
 	const bottom = Core.wrapPosition(10, vh + 10, size, vw, vh);
-	assert.ok(bottom.y < 0, "从下面走出去应该从上面回来");
+	assert.equal(bottom.y, 2, "从下面走出去应该立刻出现在上面内侧");
 	const top = Core.wrapPosition(10, -size - 10, size, vw, vh);
-	assert.ok(top.y > vh * 0.5, "从上面走出去应该从下面回来");
+	assert.ok(top.y > vh * 0.5, "从上面走出去应该出现在下面内侧");
 	const right = Core.wrapPosition(vw + 10, 10, size, vw, vh);
-	assert.ok(right.x < 0);
+	assert.equal(right.x, 2, "从右边走出去应该立刻出现在左边内侧");
 	const left = Core.wrapPosition(-size - 10, 10, size, vw, vh);
-	assert.ok(left.x > vw * 0.5);
+	assert.equal(left.x, vw - size - 2, "从左边走出去应该出现在右边内侧");
 	const inside = Core.wrapPosition(200, 200, size, vw, vh);
 	assert.deepEqual(inside, { x: 200, y: 200 });
 });
