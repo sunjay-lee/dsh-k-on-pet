@@ -100,6 +100,10 @@
 		],
 	};
 
+	// 每个角色的"节奏"：待机/行走时长会乘以这个系数，避免五个人同步行动。
+	// 唯有点慢、律很急、䌷最悠闲。
+	const TEMPO = { yui: 1.25, mio: 0.9, ritsu: 0.7, tsumugi: 1.45, azusa: 1.05 };
+
 	const CARE_LINES = [
 		"已经坐了很久啦，起来活动一下吧～",
 		"喝口水，看看远处，休息一下眼睛。",
@@ -435,6 +439,7 @@
 		ROSTER,
 		LINES,
 		CARE_LINES,
+		TEMPO,
 		CLIP_FPS,
 		rand,
 		pick,

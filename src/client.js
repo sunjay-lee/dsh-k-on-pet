@@ -558,10 +558,11 @@
 							}),
 							h("span", { className: "konp-set-value" }, `${settings.walkSeconds} 秒`),
 						),
+						h("div", { className: "konp-set-head" }, h("strong", null, "彩蛋")),
 						h("div", { className: "konp-set-row" },
 							h("div", { className: "konp-set-name" },
-								h("b", null, "跟随"),
-								h("small", null, "律跟澪、唯跟梓；䌷在大家都待久时跟其中一队"),
+								h("b", null, "启用彩蛋"),
+								h("small", null, "随机小剧场总开关：跟随 + 茶会"),
 							),
 							h(Switch, {
 								checked: settings.follow,
@@ -571,7 +572,7 @@
 						),
 						h("div", { className: "konp-set-row" },
 							h("div", { className: "konp-set-name" },
-								h("b", null, "跟随概率"),
+								h("b", null, "跟随彩蛋概率"),
 								h("small", null, "每次待机结束时决定要不要追过去"),
 							),
 							h("input", {
@@ -588,8 +589,8 @@
 						),
 						h("div", { className: "konp-set-row" },
 							h("div", { className: "konp-set-name" },
-								h("b", null, "茶会彩蛋"),
-								h("small", null, "䌷发呆时说到「带了蛋糕」就在右下角开茶会"),
+								h("b", null, "茶会彩蛋概率"),
+								h("small", null, "䌷说到「带了蛋糕」或连点她 15 次时开茶会"),
 							),
 							h("input", {
 								className: "konp-range",
@@ -740,6 +741,10 @@
 				const audioRef = useRef(null);
 				const lastVoice = useRef("");
 				const reduceMotion = useRef(false);
+				// 每个角色有自己的节奏（待机/行走时长按这个系数缩放），避免同步行动
+				const tempo = Core.TEMPO[member.id] || 1;
+				const clickStreak = useRef(0);
+				const clickStreakAt = useRef(0);
 				const lastMoveAt = useRef(performance.now());
 				const onTeaPartyRef = useRef(null);
 				onTeaPartyRef.current = onTeaParty || null;
@@ -842,6 +847,17 @@
 					engine.lastInteract = performance.now();
 					setClipRow(engine, row, "react");
 					engine.reactUntil = performance.now() + 3000;
+					// 连点彩蛋：2.5 秒内连点䌷 15 次，直接开茶会
+					if (member.id === "tsumugi") {
+						const tick = performance.now();
+						if (tick - clickStreakAt.current > 2500) clickStreak.current = 0;
+						clickStreakAt.current = tick;
+						clickStreak.current += 1;
+						if (clickStreak.current >= 15) {
+							clickStreak.current = 0;
+							if (onTeaPartyRef.current) onTeaPartyRef.current();
+						}
+					}
 					// 气泡跟随实际播放的那条语音（meta.lines 里是逐条的日文/中文），没有就用音符。
 					const file = useVoice ? playVoice(current.meta) : "";
 					const line = file && current.meta.lines ? current.meta.lines[file] : null;
@@ -871,12 +887,12 @@
 				const planNextMove = useCallback((engine, now) => {
 					const current = settingsRef.current;
 					const speed = Math.max(30, current.speed) * current.scale;
-					const base = current.walkSeconds * 1000 * (0.8 + Math.random() * 0.5);
+					const base = current.walkSeconds * 1000 * tempo * (0.8 + Math.random() * 0.5);
 					const tryFollow = (leaderId, maxDist, chance) => {
 						const peer = PEERS.get(leaderId);
 						if (!peer) return null;
 						const to = Core.planWalkTo(posRef.current.x, posRef.current.y, peer.x, peer.y);
-						if (!to || to.distance < 80 || to.distance > maxDist) return null;
+						if (!to || to.distance < 120 || to.distance > maxDist) return null;
 						if (Math.random() > chance) return null;
 						return {
 							dx: to.dx,
@@ -888,7 +904,7 @@
 						const chance = current.followChance / 100;
 						const leaderId = FOLLOW_TARGET[member.id];
 						if (leaderId) {
-							const followed = tryFollow(leaderId, 700, chance);
+							const followed = tryFollow(leaderId, 900, chance);
 							if (followed) return followed;
 						} else if (member.id === "tsumugi") {
 							// 两对都待久了、且自己在附近 → 随机跟其中一队
@@ -929,7 +945,7 @@
 					engine.dir = 1;
 					engine.reactUntil = 0;
 					engine.lastInteract = now;
-					engine.nextWalkAt = now + settingsRef.current.idleSeconds * 1000 * (0.6 + Math.random() * 0.8);
+					engine.nextWalkAt = now + settingsRef.current.idleSeconds * 1000 * tempo * (0.6 + Math.random() * 0.8);
 					engine.nextTalkAt = now + TALK_EVERY[0] + Math.random() * (TALK_EVERY[1] - TALK_EVERY[0]);
 					engine.nextCareAt = now + CARE_EVERY;
 					rotRef.current = 0;
@@ -1071,7 +1087,7 @@
 						// 自动回位：从挂载（自由状态）开始计时
 						freeSince: performance.now(),
 						autoSeat: false,
-						nextWalkAt: performance.now() + settingsRef.current.idleSeconds * 1000 * (0.6 + Math.random() * 0.8),
+						nextWalkAt: performance.now() + settingsRef.current.idleSeconds * 1000 * tempo * (0.6 + Math.random() * 0.8),
 					};
 					engineRef.current = engine;
 					assetRef.current = asset;
@@ -1172,7 +1188,7 @@
 							if (engine.walkElapsed >= plan.duration) {
 								setClip(engine, "stand", "idle");
 								engine.nextClipAt = now + 5000 + Math.random() * 6000;
-								engine.nextWalkAt = now + current.idleSeconds * 1000 * (0.6 + Math.random() * 0.8);
+								engine.nextWalkAt = now + current.idleSeconds * 1000 * tempo * (0.6 + Math.random() * 0.8);
 								savePosition();
 							}
 						} else {
@@ -1198,7 +1214,7 @@
 								if (current.wander && !reduceMotion.current && now > engine.nextWalkAt) {
 									// 先看要不要跟随（律跟澪、唯跟梓、䌷跟某一队），否则随机方向。
 									const plan = planNextMove(engine, now);
-									engine.nextWalkAt = now + current.idleSeconds * 1000 * (0.6 + Math.random() * 0.8);
+									engine.nextWalkAt = now + current.idleSeconds * 1000 * tempo * (0.6 + Math.random() * 0.8);
 									engine.walkPlan = plan;
 									engine.walkElapsed = 0;
 									if (plan.dx < 0) engine.dir = -1;
@@ -1264,7 +1280,7 @@
 						engine.lastInteract = performance.now();
 						// 正在溜达时被抓住：先停下再拖，否则拖拽原点和实时位置对不上。
 						if (engine.mode === "walk") setClip(engine, "stand", "idle");
-						engine.nextWalkAt = engine.lastInteract + settingsRef.current.idleSeconds * 1000 * (0.6 + Math.random() * 0.8);
+						engine.nextWalkAt = engine.lastInteract + settingsRef.current.idleSeconds * 1000 * tempo * (0.6 + Math.random() * 0.8);
 					}
 					const target = event.currentTarget;
 					if (target && target.setPointerCapture) {
@@ -1936,6 +1952,7 @@
 				const teaRunning = useRef(false);
 				const startTeaParty = useCallback(() => {
 					if (teaRunning.current) return;
+					if (!settings.follow) return; // 「启用彩蛋」总开关
 					const chance = settings.teaPartyChance ?? 100;
 					if (Math.random() * 100 > chance) return;
 					teaRunning.current = true;
