@@ -177,6 +177,8 @@
 			returnAfter: 5,
 			// 移动速度（1× 缩放下的 px/s）与节奏
 			speed: 96,
+			// 所有精灵动画的播放倍率（1 = 原始速度）
+			animSpeed: 1,
 			idleSeconds: 4, // 两次走动之间的待机时长（秒）
 			walkSeconds: 3, // 单次走动的时长（秒）
 			// 随机跟随：律跟澪、唯跟梓；䌷在大家都待久了时跟其中一队
@@ -247,6 +249,7 @@
 			seats,
 			returnAfter: Number.isFinite(Number(source.returnAfter)) ? clamp(Number(source.returnAfter), 0, 60) : 5,
 			speed: Number.isFinite(Number(source.speed)) ? clamp(Number(source.speed), 30, 300) : 96,
+			animSpeed: Number.isFinite(Number(source.animSpeed)) ? clamp(Number(source.animSpeed), 0.5, 2) : 1,
 			idleSeconds: Number.isFinite(Number(source.idleSeconds)) ? clamp(Number(source.idleSeconds), 1, 120) : 4,
 			walkSeconds: Number.isFinite(Number(source.walkSeconds)) ? clamp(Number(source.walkSeconds), 1, 60) : 3,
 			follow: source.follow !== false,

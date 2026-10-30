@@ -1132,6 +1132,23 @@
 						),
 						h("div", { className: "konp-set-row" },
 							h("div", { className: "konp-set-name" },
+								h("b", null, "动画速度"),
+								h("small", null, "所有动作与茶桌动画的播放倍率"),
+							),
+							h("input", {
+								className: "konp-range",
+								type: "range",
+								min: 0.5,
+								max: 2,
+								step: 0.05,
+								value: settings.animSpeed,
+								"aria-label": "动画速度",
+								onChange: (event) => updateSettings({ animSpeed: Number(event.target.value) }),
+							}),
+							h("span", { className: "konp-set-value" }, `${settings.animSpeed.toFixed(2)}×`),
+						),
+						h("div", { className: "konp-set-row" },
+							h("div", { className: "konp-set-name" },
 								h("b", null, "行走速度"),
 								h("small", null, "每秒移动的像素（1× 缩放）"),
 							),
@@ -2144,6 +2161,7 @@
 				if (meta.frameOrder && meta.frameOrder[engine.row] && engine.frames.length) {
 					fps = Math.max(1, Math.min(6, engine.frames.length / 1.6));
 				}
+					fps *= Math.max(0.25, Number(current.animSpeed) || 1);
 						const advanced = Core.advanceFrame(engine, dt, fps, engine.frames.length);
 						engine.frame = advanced.frame;
 						engine.acc = advanced.acc;
@@ -2503,8 +2521,10 @@
 			}
 
 			// 入座立绘：中间三人按 4x2 帧表循环播放，两侧两人保持静态。
-			function TableSeatSprite({ id, animated, style, onPointerDown }) {
+			function TableSeatSprite({ id, animated, animSpeed = 1, style, onPointerDown }) {
 				const canvasRef = useRef(null);
+				const animRef = useRef(animSpeed);
+				animRef.current = animSpeed;
 				const [image, setImage] = useState(null);
 				useEffect(() => {
 					if (!animated) return undefined;
@@ -2531,7 +2551,7 @@
 					const stop = addTicker((dt) => {
 						if (window.document.hidden) return;
 						acc += dt;
-						const interval = 1 / Math.max(1, TABLE.fps);
+						const interval = 1 / Math.max(0.1, TABLE.fps * (Number(animRef.current) || 1));
 						if (acc < interval) return;
 						acc %= interval;
 						frame += 1;
@@ -2578,6 +2598,8 @@
 				const [ghost, setGhost] = useState(null);
 				const [menu, setMenu] = useState(null);
 				const [failed, setFailed] = useState(false);
+				const animSpeedRef = useRef(settings.animSpeed);
+				animSpeedRef.current = settings.animSpeed;
 
 				useEffect(() => () => cleanupRef.current(), []);
 
@@ -2628,7 +2650,7 @@
 					const removeTicker = reduce ? () => {} : addTicker((dt) => {
 						if (!ready00 || window.document.hidden) return;
 						acc += dt;
-						const interval = 1 / Math.max(1, TABLE.fps);
+						const interval = 1 / Math.max(0.1, TABLE.fps * (Number(animSpeedRef.current) || 1));
 						while (acc >= interval) {
 							acc -= interval;
 							frame += 1;
@@ -2795,6 +2817,7 @@
 							key: seat.id,
 							id: seat.id,
 							animated: Boolean(TABLE_ANIM[seat.id]),
+							animSpeed: settings.animSpeed,
 							style: {
 								position: "absolute",
 								zIndex: seat.id === "yui" ? 1 : 2,

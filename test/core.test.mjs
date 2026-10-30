@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
 const Core = require("../src/core.cjs");
@@ -55,6 +56,9 @@ test("keeps behavior switches and their defaults", () => {
 	assert.equal(defaults.chatter, true);
 	assert.equal(defaults.care, true);
 	assert.equal(defaults.muted, false);
+	assert.equal(defaults.animSpeed, 1);
+	assert.equal(Core.normalizeSettings({ animSpeed: 0.1 }).animSpeed, 0.5);
+	assert.equal(Core.normalizeSettings({ animSpeed: 9 }).animSpeed, 2);
 });
 
 test("keeps table position and seats, dropping malformed values", () => {
@@ -244,4 +248,12 @@ test("wrapPosition 从对侧内侧出现（不会在屏幕外滑行）", () => {
 	assert.equal(left.x, vw - size - 2, "从左边走出去应该出现在右边内侧");
 	const inside = Core.wrapPosition(200, 200, size, vw, vh);
 	assert.deepEqual(inside, { x: 200, y: 200 });
+});
+
+test("琴吹䌷的拖拽动作使用 row 1（背面被拎起），不是睡眠的 row 2", () => {
+	const meta = JSON.parse(readFileSync(new URL("../assets/characters/tsumugi/meta.json", import.meta.url), "utf8"));
+	assert.equal(meta.actions.held, 1);
+	assert.equal(meta.actions.sleep, 2);
+	assert.ok(meta.clips.held.length > 0);
+	assert.notDeepEqual(meta.clips.held, meta.clips.sleep);
 });
