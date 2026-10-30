@@ -14,12 +14,17 @@
 - **单击**：随机播该角色的反应动作 3 秒，气泡显示正在播放的那条语音的中文
 - **双击**：跳舞，跳完回待机，1.5–3.5 秒后自己走起来
 - **拖拽 / 甩出**：拎起、抛物线、落地弹跳，位置自动记忆
-- **茶桌**：默认停在输入框上方，可拖动、可固定；把角色拖到桌上会自动入座
+- **茶桌**：默认停在输入框上方，可拖动、可固定；把角色拖到桌上会自动入座；右键茶桌可锁定位置、全员入座/离座
 - **自动回位**：角色在外溜达超过设定时长，会自己走到座位坐下（0–30 分钟可调，0 = 关闭）
 - **语音与字幕**：点击/双击播放原版语音，气泡同步显示该条语音的中文（137 条逐条转写校对）
 - **关怀提醒**：每 50 分钟提醒喝水/起身；闲置 4 分钟打瞌睡
 - **不挡操作**：只有宠物本体接收指针事件，其余区域点击穿透
 - **本地存储**：偏好存在浏览器 `localStorage`，支持导出/导入 JSON
+
+## 预览
+
+<p><img src="docs/preview.png" width="240" alt="悬浮角色与气泡"></p>
+<p><img src="docs/table.png" width="420" alt="五人茶桌"> <img src="docs/settings.png" width="420" alt="DSH 设置页"></p>
 
 ## 安装
 
@@ -34,8 +39,8 @@ dsh plugin --profile web add github:sunjay-lee/dsh-k-on-pet
 
 ## 动作行与 `actions` 字段
 
-素材图集保持原样（不重新解码、不替换 `sheet.png`），每个角色用哪一行动作写在
-`assets/characters/<id>/meta.json` 的 `actions` 里：
+图集从原程序解码后统一为 96×96 网格（琴吹䌷、中野梓的原始帧宽不同，已做居中裁切），
+每个角色用哪一行动作写在 `assets/characters/<id>/meta.json` 的 `actions` 里：
 
 ```json
 {
@@ -66,7 +71,7 @@ dsh plugin --profile web add github:sunjay-lee/dsh-k-on-pet
 | 备份与恢复 | 导出 / 导入 | 偏好存为 JSON，可跨浏览器迁移 |
 | 位置与重置 | 初始化 / 重置所有位置 / 恢复默认设置 | 清空坐标与运行状态 |
 
-右键角色：隐藏这只 / 回到右下角。
+右键角色：隐藏这只 / 回到右下角。右键茶桌：固定位置 / 全员入座 / 全员离座 / 恢复默认位置。
 
 ## 工作原理
 
@@ -82,7 +87,7 @@ dsh plugin --profile web add github:sunjay-lee/dsh-k-on-pet
 ```bash
 npm run build        # 重建 lib/client.js（改完 src/ 必须跑）
 npm run check        # 静态自检：清单、素材、动作行、构建同步
-npm run test:unit    # 纯逻辑单测（21 项）
+npm run test:unit    # 纯逻辑单测（25 项）
 npm test             # build + check + 单测
 npm run test:smoke   # 可选：无头 Chrome 冒烟测试（需要 CHROME_BIN）
 ```
