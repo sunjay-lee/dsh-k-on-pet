@@ -1,6 +1,6 @@
 {
   "name": "dsh-k-on-pet",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "《轻音少女》五位角色的 DSH Web 桌宠：任意方位行走、待机/点击/双击动作、茶桌与自动回位。",
   "type": "module",
   "main": "lib/index.js",

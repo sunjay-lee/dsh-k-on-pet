@@ -56,9 +56,12 @@ test("keeps behavior switches and their defaults", () => {
 	assert.equal(defaults.chatter, true);
 	assert.equal(defaults.care, true);
 	assert.equal(defaults.muted, false);
-	assert.equal(defaults.animSpeed, 1);
-	assert.equal(Core.normalizeSettings({ animSpeed: 0.1 }).animSpeed, 0.5);
-	assert.equal(Core.normalizeSettings({ animSpeed: 9 }).animSpeed, 2);
+	assert.equal(defaults.walkFps, 6);
+	assert.equal(defaults.animFps, 6);
+	assert.equal(Core.normalizeSettings({ walkFps: 1 }).walkFps, 2);
+	assert.equal(Core.normalizeSettings({ walkFps: 40 }).walkFps, 24);
+	assert.equal(Core.normalizeSettings({ animFps: 1 }).animFps, 2);
+	assert.equal(Core.normalizeSettings({ animFps: 40 }).animFps, 24);
 });
 
 test("keeps table position and seats, dropping malformed values", () => {
@@ -256,4 +259,11 @@ test("琴吹䌷的拖拽动作使用 row 1（背面被拎起），不是睡眠�
 	assert.equal(meta.actions.sleep, 2);
 	assert.ok(meta.clips.held.length > 0);
 	assert.notDeepEqual(meta.clips.held, meta.clips.sleep);
+});
+
+test("中野梓的点击动作不再是抓取行，且使用有效动作行", () => {
+	const meta = JSON.parse(readFileSync(new URL("../assets/characters/azusa/meta.json", import.meta.url), "utf8"));
+	assert.ok(meta.actions.click.length > 0);
+	assert.notEqual(meta.actions.click[0], meta.actions.held);
+	assert.ok(meta.actions.click[0] >= 0 && meta.actions.click[0] < meta.sheet.rows);
 });

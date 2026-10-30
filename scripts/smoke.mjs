@@ -482,6 +482,15 @@ try {
 	await waitUntil("document.querySelectorAll('.konp-canvas').length === 1", 3000, "只显示平泽唯");
 	check(await evaluate("document.querySelector('.konp-settings .konp-set-head span').textContent.trim() === '1 / 5'"), "设置页计数正确（1 / 5）");
 
+	// ---- 两个独立的 FPS 设置 ----
+	check(await evaluate("document.querySelectorAll('.konp-settings input[aria-label$=\"FPS\"]').length === 2"), "设置页有行走/其他两个 FPS 滑杆");
+	await evaluate(`(() => { const input = document.querySelector('.konp-settings input[aria-label="行走动画 FPS"]'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(input, '12'); input.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+	await sleep(180);
+	const walkFps = await evaluate(`(() => { try { return JSON.parse(localStorage.getItem('dsh-k-on-pet:v2')).walkFps; } catch { return null; } })()`);
+	check(walkFps === 12, "行走 FPS 写入设置");
+	await evaluate(`(() => { const input = document.querySelector('.konp-settings input[aria-label="行走动画 FPS"]'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(input, '6'); input.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+	await sleep(120);
+
 	// ---- 准备 README 预览图 ----
 	await clickButton("重置所有位置");
 	await sleep(700);

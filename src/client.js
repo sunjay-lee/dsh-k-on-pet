@@ -1132,20 +1132,37 @@
 						),
 						h("div", { className: "konp-set-row" },
 							h("div", { className: "konp-set-name" },
-								h("b", null, "动画速度"),
-								h("small", null, "所有动作与茶桌动画的播放倍率"),
+								h("b", null, "行走动画 FPS"),
+								h("small", null, "迈步动画的帧率，与移动速度独立"),
 							),
 							h("input", {
 								className: "konp-range",
 								type: "range",
-								min: 0.5,
-								max: 2,
-								step: 0.05,
-								value: settings.animSpeed,
-								"aria-label": "动画速度",
-								onChange: (event) => updateSettings({ animSpeed: Number(event.target.value) }),
+								min: 2,
+								max: 24,
+								step: 1,
+								value: settings.walkFps,
+								"aria-label": "行走动画 FPS",
+								onChange: (event) => updateSettings({ walkFps: Number(event.target.value) }),
 							}),
-							h("span", { className: "konp-set-value" }, `${settings.animSpeed.toFixed(2)}×`),
+							h("span", { className: "konp-set-value" }, `${settings.walkFps} FPS`),
+						),
+						h("div", { className: "konp-set-row" },
+							h("div", { className: "konp-set-name" },
+								h("b", null, "其他动画 FPS"),
+								h("small", null, "待机、点击、拖拽等非行走动画的帧率"),
+							),
+							h("input", {
+								className: "konp-range",
+								type: "range",
+								min: 2,
+								max: 24,
+								step: 1,
+								value: settings.animFps,
+								"aria-label": "其他动画 FPS",
+								onChange: (event) => updateSettings({ animFps: Number(event.target.value) }),
+							}),
+							h("span", { className: "konp-set-value" }, `${settings.animFps} FPS`),
 						),
 						h("div", { className: "konp-set-row" },
 							h("div", { className: "konp-set-name" },
@@ -2154,14 +2171,12 @@
 
 						syncTransform();
 
-						// 走路时按位移速度推帧，避免步频和移动速度对不上（看起来像滑步）。
-						const walkFps = Math.max(2, Math.min(8, (current.speed * current.scale) / 22));
-						let fps = engine.mode === "walk" ? walkFps : engine.clip === "stand" ? 4 : (CLIP_FPS[engine.clip] || 5);
+						// 行走/其他动画分别使用用户设置的帧率；行走不再跟随移动速度自动折算。
+						let fps = engine.mode === "walk" ? current.walkFps : engine.clip === "stand" ? 4 : current.animFps;
 				// 导入的自定义动作：按"整段约 1.6 秒"折算帧率，避免 2-3 帧的图集闪成幻灯片
 				if (meta.frameOrder && meta.frameOrder[engine.row] && engine.frames.length) {
 					fps = Math.max(1, Math.min(6, engine.frames.length / 1.6));
 				}
-					fps *= Math.max(0.25, Number(current.animSpeed) || 1);
 						const advanced = Core.advanceFrame(engine, dt, fps, engine.frames.length);
 						engine.frame = advanced.frame;
 						engine.acc = advanced.acc;
@@ -2521,10 +2536,8 @@
 			}
 
 			// 入座立绘：中间三人按 4x2 帧表循环播放，两侧两人保持静态。
-			function TableSeatSprite({ id, animated, animSpeed = 1, style, onPointerDown }) {
+			function TableSeatSprite({ id, animated, style, onPointerDown }) {
 				const canvasRef = useRef(null);
-				const animRef = useRef(animSpeed);
-				animRef.current = animSpeed;
 				const [image, setImage] = useState(null);
 				useEffect(() => {
 					if (!animated) return undefined;
@@ -2551,7 +2564,7 @@
 					const stop = addTicker((dt) => {
 						if (window.document.hidden) return;
 						acc += dt;
-						const interval = 1 / Math.max(0.1, TABLE.fps * (Number(animRef.current) || 1));
+						const interval = 1 / Math.max(0.1, TABLE.fps);
 						if (acc < interval) return;
 						acc %= interval;
 						frame += 1;
@@ -2598,8 +2611,6 @@
 				const [ghost, setGhost] = useState(null);
 				const [menu, setMenu] = useState(null);
 				const [failed, setFailed] = useState(false);
-				const animSpeedRef = useRef(settings.animSpeed);
-				animSpeedRef.current = settings.animSpeed;
 
 				useEffect(() => () => cleanupRef.current(), []);
 
@@ -2650,7 +2661,7 @@
 					const removeTicker = reduce ? () => {} : addTicker((dt) => {
 						if (!ready00 || window.document.hidden) return;
 						acc += dt;
-						const interval = 1 / Math.max(0.1, TABLE.fps * (Number(animSpeedRef.current) || 1));
+						const interval = 1 / Math.max(0.1, TABLE.fps);
 						while (acc >= interval) {
 							acc -= interval;
 							frame += 1;
@@ -2817,7 +2828,6 @@
 							key: seat.id,
 							id: seat.id,
 							animated: Boolean(TABLE_ANIM[seat.id]),
-							animSpeed: settings.animSpeed,
 							style: {
 								position: "absolute",
 								zIndex: seat.id === "yui" ? 1 : 2,
