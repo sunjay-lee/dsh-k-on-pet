@@ -19,6 +19,10 @@
 	const CARE_EVERY = 50 * 60 * 1000;
 	const TALK_EVERY = [2.5 * 60 * 1000, 5 * 60 * 1000];
 	const GRAVITY = 1900;
+	// 溜达：待机很短，大部分时间在走。
+	const WALK_SPEED = 96; // 每秒位移（1× 缩放下的像素）
+	const WALK_EVERY = [2500, 6500]; // 两次溜达之间的间隔（毫秒）
+	const WALK_DISTANCE = [160, 560]; // 单次溜达的距离（1× 缩放下的像素）
 
 	// 桌面摆件：desk00(中间三把椅子) + desk01(两侧椅子) 叠成五个固定座位。
 	// 坐标来自 MascotTable_d/main.sd 的对象表（x 为 288×160 场景内的左坐标）。
@@ -76,6 +80,15 @@
 			"律，随时待命！",
 			"啊哈哈，又忘记带乐谱了。",
 		],
+		mio: [
+			{ ja: "リツ、待って！", zh: "律，等等！" },
+			{ ja: "リツ、どこ行くの！", zh: "律，你要去哪！" },
+			{ ja: "もう、待ちなさいよ！", zh: "真是的，给我站住！" },
+		],
+		azusa: [
+			{ ja: "唯先輩、待ってください！", zh: "唯前辈，请等一下！" },
+			{ ja: "唯先輩、置いていかないで！", zh: "唯前辈，别丢下我！" },
+		],
 		tsumugi: [
 			"我带了蛋糕来哦～",
 			"大家要好好相处呀。",
@@ -94,6 +107,34 @@
 			"轻音部，最好了！",
 			"这次一定要合奏成功！",
 		],
+	};
+
+	// 每个角色的"节奏"：待机/行走时长会乘以这个系数，避免五个人同步行动。
+	// 唯有点慢、律很急、䌷最悠闲。
+	// 跟随触发时追逐者的台词（日文/中文双语，按设置切换）
+	const FOLLOW_LINES = {
+		ritsu: [
+			{ ja: "澪ー！待ってよー！", zh: "澪——！等等我呀——！" },
+			{ ja: "澪、置いてかないでよ！", zh: "澪，别丢下我呀！" },
+			{ ja: "捕まえた、澪！", zh: "抓到你了，澪！" },
+		],
+		yui: [
+			{ ja: "あずにゃーん！", zh: "梓喵——！" },
+			{ ja: "あずにゃん、待ってー！", zh: "梓喵，等等我——！" },
+			{ ja: "あずにゃんと遊びたいなー", zh: "好想和梓喵玩呀～" },
+		],
+		tsumugi: [
+			{ ja: "私も行きますわ～", zh: "我也要去～" },
+			{ ja: "みなさん、待ってくださいな～", zh: "大家，请等等我呀～" },
+		],
+	};
+
+	const TEMPO = { yui: 1.25, mio: 0.9, ritsu: 0.7, tsumugi: 1.45, azusa: 1.05 };
+
+	// 彩蛋台词：䌷看到别人并肩时的感叹（原文「女の子同士っていいな～って」），以及开茶会前的一句
+	const EGG_LINES = {
+		pair: { ja: "女の子同士っていいな～って", zh: "只是觉得女孩子们之间真是好呀" },
+		tea: { ja: "お茶会をしましょうか", zh: "我们开个茶会吧" },
 	};
 
 	const CARE_LINES = [
@@ -124,11 +165,36 @@
 			muted: false,
 			chatter: true,
 			care: true,
+			wander: true,
+			facingFlipped: false,
+			resetAt: 0,
 			positions: {},
 			table: true,
 			tableLocked: false,
 			tablePos: null,
 			seats: {},
+			// 茶桌开着时，角色在外溜达多久之后自动回到座位（分钟；0 = 不回位）
+			returnAfter: 5,
+			// 移动速度（1× 缩放下的 px/s）与节奏
+			speed: 96,
+			// 行走/其他动画的帧率（FPS），分开调节
+			walkFps: 6,
+			animFps: 6,
+			idleSeconds: 4, // 两次走动之间的待机时长（秒）
+			walkSeconds: 3, // 单次走动的时长（秒）
+			// 随机跟随：律跟澪、唯跟梓；䌷在大家都待久了时跟其中一队
+			follow: true,
+			followChance: 80, // 跟随概率（百分比）
+			teaPartyChance: 100, // 听到"带了蛋糕"时开茶会的概率（百分比）
+			// 台词语言：zh 中文 / ja 日文 / both 双语
+			lang: "zh",
+			// 开发者模式：动作行号覆盖（按角色覆盖 meta.actions，不写回文件）
+			devMode: false,
+			actionOverrides: {},
+			// 开发者模式导入的图集（dataURL + 行列数），仅本地生效
+			sheetOverrides: {},
+			// 是否启用开发者模式里的自定义图集/动作（关掉就只用官方素材）
+			throwEnabled: true, // 是否允许把角色甩出去
 		};
 	}
 
@@ -174,11 +240,28 @@
 			muted: Boolean(source.muted),
 			chatter: source.chatter !== false,
 			care: source.care !== false,
+			wander: source.wander !== false,
+			facingFlipped: source.facingFlipped === true,
+			resetAt: Number.isFinite(source.resetAt) ? Number(source.resetAt) : 0,
 			positions,
 			table,
 			tableLocked,
 			tablePos,
 			seats,
+			returnAfter: Number.isFinite(Number(source.returnAfter)) ? clamp(Number(source.returnAfter), 0, 60) : 5,
+			speed: Number.isFinite(Number(source.speed)) ? clamp(Number(source.speed), 30, 300) : 96,
+			walkFps: Number.isFinite(Number(source.walkFps)) ? clamp(Math.round(Number(source.walkFps)), 2, 24) : 6,
+			animFps: Number.isFinite(Number(source.animFps)) ? clamp(Math.round(Number(source.animFps)), 2, 24) : 6,
+			idleSeconds: Number.isFinite(Number(source.idleSeconds)) ? clamp(Number(source.idleSeconds), 1, 120) : 4,
+			walkSeconds: Number.isFinite(Number(source.walkSeconds)) ? clamp(Number(source.walkSeconds), 1, 60) : 3,
+			follow: source.follow !== false,
+			followChance: Number.isFinite(Number(source.followChance)) ? clamp(Number(source.followChance), 0, 100) : 80,
+			teaPartyChance: Number.isFinite(Number(source.teaPartyChance)) ? clamp(Number(source.teaPartyChance), 0, 100) : 100,
+			lang: ["zh", "ja", "both"].includes(source.lang) ? source.lang : "zh",
+			devMode: source.devMode === true,
+			actionOverrides: sanitizeOverrides(source.actionOverrides),
+			sheetOverrides: sanitizeSheets(source.sheetOverrides),
+			throwEnabled: source.throwEnabled !== false,
 		};
 	}
 
@@ -292,6 +375,129 @@
 		return { x, y, vx, vy, landed };
 	}
 
+	/**
+	 * 规划一次溜达：任意方位走一段随机距离（原版可以朝任意方向走）。
+	 * 返回单位方向、距离与时长；调用方按方向选左右步态。
+	 */
+	function planWalk(x, y, limit, scale = 1) {
+		const factor = Math.max(0.5, Number(scale) || 1);
+		const min = WALK_DISTANCE[0] * factor;
+		const max = WALK_DISTANCE[1] * factor;
+		const angle = Math.random() * Math.PI * 2;
+		const dx = Math.cos(angle);
+		const dy = Math.sin(angle);
+		const distance = min + Math.random() * (max - min);
+		return {
+			dx,
+			dy,
+			distance,
+			duration: (distance / (WALK_SPEED * factor)) * 1000,
+		};
+	}
+
+	/**
+	 * 规划一次"朝目标走"：给起止坐标，返回单位方向与距离。
+	 * 用于随机跟随（律跟澪、唯跟梓、䌷跟某一队）。
+	 */
+	function planWalkTo(fromX, fromY, toX, toY) {
+		const dx = (Number(toX) || 0) - (Number(fromX) || 0);
+		const dy = (Number(toY) || 0) - (Number(fromY) || 0);
+		const distance = Math.hypot(dx, dy);
+		if (distance < 1) return null;
+		return { dx: dx / distance, dy: dy / distance, distance };
+	}
+
+	/**
+	 * 推进溜达一步：沿计划方向匀速前进（不夹边界，出界交给 wrapPosition 处理）。
+	 */
+	function stepWalk(pos, plan, speed, dt) {
+		const step = Math.max(0, (Number(speed) || 0) * Math.max(0, Number(dt) || 0));
+		return {
+			x: (Number(pos.x) || 0) + plan.dx * step,
+			y: (Number(pos.y) || 0) + plan.dy * step,
+		};
+	}
+
+	/**
+	 * 出界回绕：往下走没了就从上面下来，左右同理（原版的行为）。
+	 * size 是角色边长，viewport 是可视区尺寸。
+	 */
+	/** 图集覆盖：只接受 data:image/... 的字符串与 1-12 的行列数。 */
+	function sanitizeSheets(raw) {
+		const out = {};
+		if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+		for (const [charId, value] of Object.entries(raw)) {
+			if (!value || typeof value !== "object") continue;
+			if (typeof value.src !== "string" || !/^data:image\//.test(value.src)) continue;
+			const cols = Math.round(Number(value.cols));
+			const rows = Math.round(Number(value.rows));
+			if (!(cols >= 1 && cols <= 60 && rows >= 1 && rows <= 60)) continue;
+			const name = typeof value.name === "string" ? value.name.slice(0, 40) : "";
+			out[charId] = {
+				src: value.src,
+				cols,
+				rows,
+				officialRows: Number.isFinite(Number(value.officialRows)) ? Math.max(0, Math.min(rows, Math.round(Number(value.officialRows)))) : rows,
+				frames: Number.isFinite(Number(value.frames)) ? Math.max(0, Math.min(3600, Math.round(Number(value.frames)))) : 0,
+				kind: typeof value.kind === "string" ? value.kind.slice(0, 20) : "",
+				name: typeof value.name === "string" ? value.name.slice(0, 40) : "",
+				anims: Array.isArray(value.anims)
+					? value.anims.slice(0, 60).map((anim) => ({
+						name: typeof anim.name === "string" ? anim.name.slice(0, 40) : "动作",
+						row: Number.isInteger(anim.row) ? anim.row : 0,
+						rows: Number.isInteger(anim.rows) ? anim.rows : 1,
+						frames: Array.isArray(anim.frames)
+						// null = 空白帧；超出本行列数的偏移一律当空帧，避免指到别人那一格
+						? anim.frames.slice(0, 60).map((n) => (Number.isInteger(n) && n >= 0 && n < cols ? n : null))
+						: [],
+					}))
+					: [],
+				order: Array.isArray(value.order)
+					? value.order.slice(0, 12).map((row) => (Array.isArray(row) ? row.filter((n) => Number.isInteger(n) && n >= 0 && n < 3600).slice(0, 60) : []))
+					: [],
+			};
+		}
+		return out;
+	}
+
+	/** 只保留形如 { charId: { state: 行号 | 行号数组 } } 的合法覆盖值。 */
+	function sanitizeOverrides(raw) {
+		const out = {};
+		if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+		for (const [charId, table] of Object.entries(raw)) {
+			if (!table || typeof table !== "object" || Array.isArray(table)) continue;
+			const clean = {};
+			for (const [state, value] of Object.entries(table)) {
+				const ok = (n) => Number.isInteger(n) && n >= 0 && n < 64;
+				if (Array.isArray(value) && value.length && value.every(ok)) clean[state] = value.slice();
+				else if (ok(value)) clean[state] = value;
+			}
+			if (Object.keys(clean).length) out[charId] = clean;
+		}
+		return out;
+	}
+
+	function wrapPosition(x, y, size, viewportWidth, viewportHeight) {
+		const spanX = Math.max(1, viewportWidth) + size;
+		const spanY = Math.max(1, viewportHeight) + size;
+		const wrap = (value, span) => ((((value + size) % span) + span) % span) - size;
+		// 被边界"吞掉"的瞬间就从对侧内侧出现：否则会在屏幕外滑一段才露面
+		const crossX = (value, limit) => {
+			if (value >= limit) return 2;
+			if (value <= -size) return Math.max(2, limit - size - 2);
+			return wrap(value, spanX);
+		};
+		const crossY = (value, limit) => {
+			if (value >= limit) return 2;
+			if (value <= -size) return Math.max(2, limit - size - 2);
+			return wrap(value, spanY);
+		};
+		return {
+			x: crossX(Number(x) || 0, Math.max(1, viewportWidth)),
+			y: crossY(Number(y) || 0, Math.max(1, viewportHeight)),
+		};
+	}
+
 	function advanceFrame(state, dt, fps, frameCount) {
 		if (!Number.isFinite(fps) || fps <= 0 || frameCount <= 0) {
 			return { frame: state.frame || 0, acc: state.acc || 0 };
@@ -344,10 +550,16 @@
 		CARE_EVERY,
 		TALK_EVERY,
 		GRAVITY,
+		WALK_SPEED,
+		WALK_EVERY,
+		WALK_DISTANCE,
 		TABLE,
 		ROSTER,
 		LINES,
 		CARE_LINES,
+		TEMPO,
+		FOLLOW_LINES,
+		EGG_LINES,
 		CLIP_FPS,
 		rand,
 		pick,
@@ -362,6 +574,12 @@
 		boundsFor,
 		defaultPosition,
 		stepThrow,
+		planWalk,
+		planWalkTo,
+		sanitizeOverrides,
+		sanitizeSheets,
+		stepWalk,
+		wrapPosition,
 		advanceFrame,
 		frameRect,
 		exportSettings,

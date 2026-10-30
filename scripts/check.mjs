@@ -53,10 +53,12 @@ for (const rel of [
 	"src/core.cjs",
 	"src/client.js",
 	"test/core.test.mjs",
-
 	"lib/index.js",
 	"lib/client.js",
 	"cordis.patch.yml",
+	"README.md",
+	"LICENSE",
+	"THIRD_PARTY_NOTICES.md",
 	...Object.values(pkg.exports).map((entry) => entry.default).filter(Boolean).map((p) => p.replace(/^\.\//, "")),
 ]) {
 	await mustExist(rel);
@@ -71,45 +73,55 @@ if (!hostPrefix || !clientBase || hostPrefix !== clientBase) {
 	problems.push(`素材路径不一致：host=${hostPrefix} client=${clientBase}`);
 }
 
+const REQUIRED_ACTIONS = ["idle", "walkLeft", "walkRight", "click", "dance", "sleep", "held"];
 const charDir = join(root, "assets/characters");
 const roster = ["yui", "mio", "ritsu", "tsumugi", "azusa"];
 for (const id of roster) {
-	const metaPath = join(charDir, id, "meta.json");
-	const sheetPath = join(charDir, id, "sheet.png");
 	const sheetInfo = await mustExist(`assets/characters/${id}/sheet.png`);
 	if (!sheetInfo) continue;
 	let meta;
 	try {
-		meta = JSON.parse(await readFile(metaPath, "utf8"));
+		meta = JSON.parse(await readFile(join(charDir, id, "meta.json"), "utf8"));
 	} catch (error) {
 		problems.push(`${id}: meta.json 读取失败：${error.message}`);
 		continue;
 	}
 	const { columns, rows, cell } = meta.sheet;
 	if (cell !== 96) problems.push(`${id}: cell 应为 96`);
-	const cells = new Set(meta.cells.filter((c) => c.bbox).map((c) => c.index));
-	if (meta.cells.length !== columns * rows) problems.push(`${id}: cells 数量 ${meta.cells.length} != ${columns * rows}`);
+	if (!Number.isInteger(columns) || !Number.isInteger(rows)) problems.push(`${id}: sheet 行列数异常`);
+	const total = columns * rows;
+	if (meta.cells.length !== total) problems.push(`${id}: cells 数量 ${meta.cells.length} != ${total}`);
+	const valid = new Set(meta.cells.filter((c) => c.bbox).map((c) => c.index));
+
+	const actions = meta.actions ?? {};
+	for (const key of REQUIRED_ACTIONS) {
+		const value = actions[key];
+		if (value === undefined) {
+			problems.push(`${id}: actions 缺少 ${key}`);
+			continue;
+		}
+		const list = Array.isArray(value) ? value : [value];
+		for (const row of list) {
+			if (!Number.isInteger(row) || row < 0 || row >= rows) problems.push(`${id}: actions.${key} 行号越界 ${row}`);
+			else if (!meta.cells.some((c) => Math.floor(c.index / columns) === row && valid.has(c.index))) {
+				problems.push(`${id}: actions.${key} 指向的行 ${row} 没有有效帧`);
+			}
+		}
+	}
+
 	for (const [clip, frames] of Object.entries(meta.clips ?? {})) {
 		if (!Array.isArray(frames) || frames.length === 0) problems.push(`${id}: clip ${clip} 为空`);
 		for (const frame of frames) {
-			if (!Number.isInteger(frame) || frame < 0 || frame >= columns * rows) problems.push(`${id}: clip ${clip} 帧越界 ${frame}`);
-			else if (!cells.has(frame)) problems.push(`${id}: clip ${clip} 使用了空帧 ${frame}`);
+			if (!Number.isInteger(frame) || frame < 0 || frame >= total) problems.push(`${id}: clip ${clip} 帧越界 ${frame}`);
+			else if (!valid.has(frame)) problems.push(`${id}: clip ${clip} 使用了空帧 ${frame}`);
 		}
 	}
-	for (const required of ["idle", "react", "sleep", "held"]) {
-		if (!meta.clips?.[required]?.length) problems.push(`${id}: 缺少 clip ${required}`);
-	}
-	const expectedHeldRow = id === "yui" ? 2 : 1;
-	const expectedSleepRow = id === "yui" ? 1 : 2;
-	for (const [clip, row] of [["held", expectedHeldRow], ["sleep", expectedSleepRow]]) {
-		const rows = new Set((meta.clips[clip] ?? []).map((frame) => Math.floor(frame / columns)));
-		if (rows.size !== 1 || !rows.has(row)) problems.push(`${id}: ${clip} 应位于 row${row}`);
-	}
+
 	if (!Array.isArray(meta.voices) || meta.voices.length === 0) problems.push(`${id}: voices 为空`);
 	for (const voice of meta.voices ?? []) {
 		await mustExist(`assets/characters/${id}/voices/${voice}`);
 	}
-	notes.push(`${id}: ${meta.name} ${columns}x${rows} · idle ${meta.clips.idle.length} 帧 · ${meta.voices.length} 条语音`);
+	notes.push(`${id}: ${meta.name} ${columns}×${rows} · 待机 row${actions.idle} · ${meta.voices.length} 条语音`);
 }
 
 if (problems.length) {

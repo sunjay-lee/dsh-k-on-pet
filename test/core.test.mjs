@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
 const Core = require("../src/core.cjs");
@@ -55,6 +56,12 @@ test("keeps behavior switches and their defaults", () => {
 	assert.equal(defaults.chatter, true);
 	assert.equal(defaults.care, true);
 	assert.equal(defaults.muted, false);
+	assert.equal(defaults.walkFps, 6);
+	assert.equal(defaults.animFps, 6);
+	assert.equal(Core.normalizeSettings({ walkFps: 1 }).walkFps, 2);
+	assert.equal(Core.normalizeSettings({ walkFps: 40 }).walkFps, 24);
+	assert.equal(Core.normalizeSettings({ animFps: 1 }).animFps, 2);
+	assert.equal(Core.normalizeSettings({ animFps: 40 }).animFps, 24);
 });
 
 test("keeps table position and seats, dropping malformed values", () => {
@@ -157,4 +164,106 @@ test("table hit area covers the whole table and nothing far outside", () => {
 test("table lock persists through normalize/default", () => {
 	assert.equal(Core.createDefaultSettings().tableLocked, false);
 	assert.equal(Core.normalizeSettings({ tableLocked: true }).tableLocked, true);
+});
+
+test("wander defaults on and can be turned off", () => {
+	assert.equal(Core.createDefaultSettings().wander, true);
+	assert.equal(Core.normalizeSettings({}).wander, true);
+	assert.equal(Core.normalizeSettings({ wander: false }).wander, false);
+});
+
+test("returnAfter defaults to 5 minutes and clamps to 0-60", () => {
+	assert.equal(Core.createDefaultSettings().returnAfter, 5);
+	assert.equal(Core.normalizeSettings({}).returnAfter, 5);
+	assert.equal(Core.normalizeSettings({ returnAfter: 0 }).returnAfter, 0);
+	assert.equal(Core.normalizeSettings({ returnAfter: 12 }).returnAfter, 12);
+	assert.equal(Core.normalizeSettings({ returnAfter: 90 }).returnAfter, 60);
+});
+
+test("speed / idle / walk / follow 有默认值且被钳制", () => {
+	const d = Core.createDefaultSettings();
+	assert.equal(d.speed, 96);
+	assert.equal(d.idleSeconds, 4);
+	assert.equal(d.walkSeconds, 3);
+	assert.equal(d.follow, true);
+	assert.equal(d.followChance, 80);
+	assert.equal(Core.normalizeSettings({ speed: 999 }).speed, 300);
+	assert.equal(Core.normalizeSettings({ speed: 10 }).speed, 30);
+	assert.equal(Core.normalizeSettings({ idleSeconds: 0 }).idleSeconds, 1);
+	assert.equal(Core.normalizeSettings({ walkSeconds: 99 }).walkSeconds, 60);
+	assert.equal(Core.normalizeSettings({ follow: false }).follow, false);
+	assert.equal(Core.normalizeSettings({ followChance: 150 }).followChance, 100);
+	assert.equal(Core.normalizeSettings({ followChance: -5 }).followChance, 0);
+	assert.equal(Core.normalizeSettings({ teaPartyChance: 150 }).teaPartyChance, 100);
+	assert.equal(Core.normalizeSettings({}).lang, "zh");
+	assert.equal(Core.normalizeSettings({ lang: "ja" }).lang, "ja");
+	assert.equal(Core.normalizeSettings({ lang: "both" }).lang, "both");
+	assert.equal(Core.normalizeSettings({ lang: "en" }).lang, "zh");
+});
+
+test("planWalk returns a unit direction and a positive duration", () => {
+	for (let i = 0; i < 50; i += 1) {
+		const plan = Core.planWalk(400, 600, { maxX: 900, maxY: 700 }, 1.5);
+		assert.ok(Math.abs(Math.hypot(plan.dx, plan.dy) - 1) < 1e-9, "方向必须是单位向量");
+		assert.ok(plan.distance > 0 && plan.duration > 0);
+	}
+});
+
+test("stepWalk moves along the plan in any direction", () => {
+	const right = { dx: 1, dy: 0, distance: 100, duration: 1000 };
+	const a = Core.stepWalk({ x: 0, y: 0 }, right, 42, 1);
+	assert.ok(Math.abs(a.x - 42) < 1e-9);
+	assert.equal(a.y, 0);
+	const down = { dx: 0, dy: 1, distance: 100, duration: 1000 };
+	const b = Core.stepWalk({ x: 10, y: 10 }, down, 42, 0.5);
+	assert.equal(b.x, 10);
+	assert.ok(Math.abs(b.y - 31) < 1e-9);
+});
+
+test("sheetOverrides 保留 anims 的帧序列（null 空帧不丢，越界偏移当空帧）", () => {
+	const sheet = {
+		src: "data:image/png;base64,AAAA",
+		cols: 6,
+		rows: 8,
+		officialRows: 7,
+		anims: [
+			{ name: "挥手", row: 7, rows: 1, frames: [0, 2, 3, null, null, 6] },
+			{ name: "越界", row: 8, rows: 1, frames: [0, 9, -1, 2] },
+		],
+	};
+	const clean = Core.normalizeSettings({ sheetOverrides: { yui: sheet } }).sheetOverrides.yui;
+	assert.equal(clean.anims.length, 2);
+	assert.equal(clean.anims[0].name, "挥手");
+	assert.deepEqual(clean.anims[0].frames, [0, 2, 3, null, null, null], "空帧留 null，越界偏移当空帧");
+	assert.deepEqual(clean.anims[1].frames, [0, null, null, 2]);
+	assert.deepEqual(Core.normalizeSettings({ sheetOverrides: { yui: { ...sheet, src: "http://x/a.png" } } }).sheetOverrides, {});
+});
+
+test("wrapPosition 从对侧内侧出现（不会在屏幕外滑行）", () => {
+	const vw = 800, vh = 600, size = 96;
+	const bottom = Core.wrapPosition(10, vh + 10, size, vw, vh);
+	assert.equal(bottom.y, 2, "从下面走出去应该立刻出现在上面内侧");
+	const top = Core.wrapPosition(10, -size - 10, size, vw, vh);
+	assert.ok(top.y > vh * 0.5, "从上面走出去应该出现在下面内侧");
+	const right = Core.wrapPosition(vw + 10, 10, size, vw, vh);
+	assert.equal(right.x, 2, "从右边走出去应该立刻出现在左边内侧");
+	const left = Core.wrapPosition(-size - 10, 10, size, vw, vh);
+	assert.equal(left.x, vw - size - 2, "从左边走出去应该出现在右边内侧");
+	const inside = Core.wrapPosition(200, 200, size, vw, vh);
+	assert.deepEqual(inside, { x: 200, y: 200 });
+});
+
+test("琴吹䌷的拖拽动作使用 row 1（背面被拎起），不是睡眠的 row 2", () => {
+	const meta = JSON.parse(readFileSync(new URL("../assets/characters/tsumugi/meta.json", import.meta.url), "utf8"));
+	assert.equal(meta.actions.held, 1);
+	assert.equal(meta.actions.sleep, 2);
+	assert.ok(meta.clips.held.length > 0);
+	assert.notDeepEqual(meta.clips.held, meta.clips.sleep);
+});
+
+test("中野梓的点击动作不再是抓取行，且使用有效动作行", () => {
+	const meta = JSON.parse(readFileSync(new URL("../assets/characters/azusa/meta.json", import.meta.url), "utf8"));
+	assert.ok(meta.actions.click.length > 0);
+	assert.notEqual(meta.actions.click[0], meta.actions.held);
+	assert.ok(meta.actions.click[0] >= 0 && meta.actions.click[0] < meta.sheet.rows);
 });
